@@ -1,4 +1,0 @@
-media_id,filename,format,duration_sec,file_size_mb,sample_rate,peaks_count,hashes_count,processing_time_sec,output_json
-TEDxPrague,TEDxPrague.mp3,.mp3,732.33,16.76,22050,17607,263985,34.95,TEDxPrague_fingerprints.json
-Zaznam_1,Zaznam_1.m4a,.m4a,7.89,0.19,22050,95,1305,0.57,Zaznam_1_fingerprints.json
-Zaznam_2,Zaznam_2.m4a,.m4a,9.75,0.24,22050,118,1650,0.81,Zaznam_2_fingerprints.json
