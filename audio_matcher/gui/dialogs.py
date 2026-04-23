@@ -175,10 +175,8 @@ class SettingsDialog(QDialog):
         form_dtw = QFormLayout(grp_dtw)
         form_dtw.setSpacing(15)
 
-        self.slider_fuzzy, _, lay_fuzzy = self._create_slider_row(APP_CFG.fuzzy_cutoff)
         self.slider_dtw_stop, _, lay_dtw = self._create_slider_row(APP_CFG.dtw_early_stop_threshold, max_val=2.0)
         
-        form_dtw.addRow("Tolerance překlepů u FuzzyMatching:", lay_fuzzy)
         form_dtw.addRow("DTW zahazovací práh:", lay_dtw)
         layout_algo.addWidget(grp_dtw)
         
@@ -222,7 +220,6 @@ class SettingsDialog(QDialog):
         MODEL_CFG.silero_vad_threshold = self.slider_silero.value() / 100.0
         
         APP_CFG.whisper_min_confidence = self.slider_whisper.value() / 100.0
-        APP_CFG.fuzzy_cutoff = self.slider_fuzzy.value() / 100.0
         APP_CFG.dtw_early_stop_threshold = self.slider_dtw_stop.value() / 100.0
         
         save_settings()
@@ -231,27 +228,31 @@ class SettingsDialog(QDialog):
 
 
 class VisualCompareDialog(QDialog):
-    """
-    Kompaktní okno pro vizuální porovnání vzorku a nálezu.
-    Obsahuje mírné umělé rozšíření a estetické černé okraje pro lepší čitelnost.
-    """
     def __init__(self, res, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Detailní morfologická analýza")
-        
-        # 1. Zmenšené okno a sjednocené stylování
+        self.setWindowTitle("Detailní analýza")
         self.resize(650, 380)
+        
+        # 1. Změna barvy horní lišty na zelenou (Windows 11)
+        self.apply_native_titlebar_color()
+
+        # 2. Světlý vzhled dialogu (bílo-šedé pozadí)
         self.setStyleSheet("""
-            QDialog { background-color: #111827; }
-            QLabel { color: #f3f4f6; }
+            QDialog { background-color: #f9fafb; }
+            QLabel { color: #1f2937; }
             QPushButton { 
-                background-color: #374151; 
-                color: white; 
-                border-radius: 6px; 
-                font-weight: bold; 
-                padding: 6px 12px;
+                background-color: #ffffff; 
+                border: 1px solid #d1d5db; 
+                border-radius: 4px; 
+                padding: 6px 15px; 
+                color: #4b5563; 
+                font-weight: 500; 
+                font-size: 10pt; 
             }
-            QPushButton:hover { background-color: #4b5563; }
+            QPushButton:hover { 
+                background-color: #e5e7eb; 
+                border: 1px solid #9ca3af; 
+            }
         """)
         
         layout = QVBoxLayout(self)
@@ -264,28 +265,23 @@ class VisualCompareDialog(QDialog):
         images_container = QHBoxLayout()
         images_container.setSpacing(20)
 
-        # --- ZÍSKÁNÍ PŘESNÝCH VÝSEKŮ ---
         frames_per_sec = res.sr / AUDIO_CFG.hop_length
 
-        # Pomocná funkce pro přidání estetického černého okraje (ticha)
         def add_black_padding(spec, padding_sec=0.15):
             pad_frames = int(padding_sec * frames_per_sec)
             min_db = np.min(spec)
             return np.pad(spec, ((0, 0), (pad_frames, pad_frames)), mode='constant', constant_values=min_db)
 
-        # 1. Hledaný vzorek
         spec_q = res.vis_spec_query
         spec_q_padded = add_black_padding(spec_q)
         dur_q = spec_q_padded.shape[1] / frames_per_sec
         
-        # 2. Nález
         start_idx = int(res.start_f)
         end_idx = int(res.end_f)
         spec_m = res.vis_spec_long[:, start_idx:end_idx]
         spec_m_padded = add_black_padding(spec_m)
         dur_m = spec_m_padded.shape[1] / frames_per_sec
 
-        # Převod na obrázky 
         pix_q = self.spec_to_pixmap(spec_q_padded, res.sr, dur_q)
         pix_m = self.spec_to_pixmap(spec_m_padded, res.sr, dur_m)
 
@@ -295,7 +291,8 @@ class VisualCompareDialog(QDialog):
             l.setContentsMargins(0, 0, 0, 0)
             
             lbl_t = QLabel(title_text)
-            lbl_t.setStyleSheet("color: #9ca3af; font-size: 11px;")
+            # Tmavý text popisků, aby byl na bílém pozadí vidět
+            lbl_t.setStyleSheet("color: #4b5563; font-size: 11px; font-weight: bold;")
             
             lbl_i = QLabel()
             lbl_i.setPixmap(pixmap)
@@ -305,24 +302,46 @@ class VisualCompareDialog(QDialog):
             return w
 
         images_container.addStretch(1)
-        images_container.addWidget(create_spec_widget(pix_q, "Referenční vzorek (Query)"))
+        images_container.addWidget(create_spec_widget(pix_q, "Hledaný vzorek"))
         images_container.addWidget(create_spec_widget(pix_m, f"Nalezený úsek (Čas: {res.start_f / frames_per_sec:.2f} s)"))
         images_container.addStretch(1)
         
         layout.addLayout(images_container)
         
-        # Spodní tlačítko zavřít
         btn_close = QPushButton("Zavřít")
         btn_close.setFixedSize(120, 35)
+        btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_close.clicked.connect(self.accept)
         layout.addWidget(btn_close, alignment=Qt.AlignmentFlag.AlignCenter)
 
+    # 3. Přidání funkce pro obarvení nativní Windows lišty do tohoto dialogu
+    def apply_native_titlebar_color(self, hex_bg="#10b981", hex_text="#ffffff"):
+        if sys.platform != "win32":
+            return
+        try:
+            DWMWA_CAPTION_COLOR = 35
+            DWMWA_TEXT_COLOR = 36
+            hwnd = HWND(int(self.winId()))
+            
+            bg = hex_bg.lstrip('#')
+            bg_colorref = (int(bg[4:6], 16) << 16) | (int(bg[2:4], 16) << 8) | int(bg[0:2], 16)
+            
+            txt = hex_text.lstrip('#')
+            txt_colorref = (int(txt[4:6], 16) << 16) | (int(txt[2:4], 16) << 8) | int(txt[0:2], 16)
+            
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, DWORD(DWMWA_CAPTION_COLOR), ctypes.byref(DWORD(bg_colorref)), ctypes.sizeof(DWORD))
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, DWORD(DWMWA_TEXT_COLOR), ctypes.byref(DWORD(txt_colorref)), ctypes.sizeof(DWORD))
+        except Exception as e:
+            print(f"Nepodařilo se obarvit horní lištu: {e}")
+
+    # 4. Změna barvy pozadí Matplotlib plátna, aby splynulo s oknem
     def spec_to_pixmap(self, spec: np.ndarray, sr: int, duration: float) -> QPixmap:
-        """Převede spektrogram na obrázek s lehce zvětšeným měřítkem."""
-        # Přidán základ 0.6 palce, aby i velmi krátké zvuky nebyly pouhou nitkou
         width_inches = 0.6 + ((duration / 10.0) * 5.0) 
         
-        fig = Figure(figsize=(width_inches, 3.5), dpi=100, facecolor='#111827')
+        # Facecolor odpovídá background-color v CSS (#f9fafb)
+        fig = Figure(figsize=(width_inches, 3.5), dpi=100, facecolor='#f9fafb')
         ax = fig.add_axes([0, 0, 1, 1])
         ax.axis('off')
         

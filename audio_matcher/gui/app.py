@@ -35,7 +35,7 @@ class AudioMatcherApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Audio Analysis Tool")
-        self.resize(1300, 850) 
+        self.resize(1300, 950) 
         self.setStyleSheet(MODERN_STYLESHEET)
         
         # Audio Engine
@@ -60,11 +60,19 @@ class AudioMatcherApp(QMainWindow):
         
         self.init_ui()
         self.apply_native_titlebar_color()
+        self.center_window()
 
     def log_status(self, message: str):
         """Vypíše zprávu do konzole a okamžitě donutí grafické rozhraní k překreslení."""
         self.log_text.append(f"{message}")
         QApplication.processEvents()
+    
+    def center_window(self):
+        """Vycentruje okno aplikace přesně doprostřed aktuálního monitoru."""
+        qr = self.frameGeometry() # Získá aktuální geometrii okna (včetně lišty)
+        cp = self.screen().availableGeometry().center() # Najde střed obrazovky
+        qr.moveCenter(cp) # Přesune pomyslný obdélník okna na střed obrazovky
+        self.move(qr.topLeft()) # Skutečně přesune okno aplikace na tyto nové souřadnice
         
     def init_ui(self):
         main_widget = QWidget()
@@ -75,6 +83,7 @@ class AudioMatcherApp(QMainWindow):
         self.setWindowIcon(QIcon(APP_CFG.icon_path))
 
         self.tabs = QTabWidget()
+        self.tabs.tabBar().setCursor(Qt.CursorShape.PointingHandCursor)
 
         self.tabs.setStyleSheet("""
             QTabBar::tab {
@@ -99,10 +108,30 @@ class AudioMatcherApp(QMainWindow):
         """)
 
         self.btn_settings = QPushButton("Nastavení")
-        self.btn_settings.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Změna kurzoru na ručičku při najetí
+        self.btn_settings.setCursor(Qt.CursorShape.PointingHandCursor) 
         self.btn_settings.setStyleSheet("""
-            QPushButton { background: transparent; border: none; font-weight: 500; color: #6b7280; padding: 10px 20px; }
-            QPushButton:hover { color: #10b981; background-color: #f9fafb; border-bottom: 2px solid #10b981; }
+            QPushButton { 
+                background: transparent; 
+                border: none; 
+                border-bottom: 2px solid transparent; 
+                border-radius: 0px; 
+                font-size: 10pt;
+                font-weight: 500; 
+                color: #6b7280; 
+                padding: 10px 20px; 
+            }
+            QPushButton:hover { 
+                color: #10b981; 
+                background-color: #f9fafb; 
+                border-radius: 0px;
+            }
+            QPushButton:pressed { 
+                color: #10b981; 
+                border-bottom: 2px solid #10b981; 
+                font-weight: bold; 
+                border-radius: 0px;
+            }
         """)
         self.btn_settings.clicked.connect(self.open_settings)
         self.tabs.setCornerWidget(self.btn_settings, Qt.Corner.TopRightCorner)
@@ -138,6 +167,15 @@ class AudioMatcherApp(QMainWindow):
         input_layout.setSpacing(15)
         input_layout.setContentsMargins(20, 20, 20, 20)
 
+        # --- NADPIS A POPIS ---
+        title_detail = QLabel("Srovnávací analýza")
+        title_detail.setStyleSheet("font-size: 14pt; font-weight: bold;")
+        desc_detail = QLabel("Algoritmus porovná hledaný vzorek s prohledávaným audiem a detailně vizualizuje shodu.")
+        desc_detail.setStyleSheet("color: #6b7280; margin-bottom: 10px;")
+        
+        input_layout.addWidget(title_detail)
+        input_layout.addWidget(desc_detail)
+
         # -------- DEFINICE STYLŮ --------
         standard_input_style = """
             QComboBox, QLineEdit {
@@ -168,7 +206,7 @@ class AudioMatcherApp(QMainWindow):
             }
         """
 
-        INPUT_WIDTH = 450
+        INPUT_WIDTH = 375
         LABEL_WIDTH = 130
 
         def add_search_icon_to_lineedit(line_edit: QLineEdit):
@@ -190,7 +228,7 @@ class AudioMatcherApp(QMainWindow):
         add_search_icon_to_lineedit(self.input_single_long)
         self.input_single_long.returnPressed.connect(self.load_single_long_from_folder)
         
-        self.btn_single_browse_long = QPushButton("Procházet...")
+        self.btn_single_browse_long = QPushButton("Procházet vlastní...")
         self.btn_single_browse_long.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_single_browse_long.setStyleSheet(browse_btn_style)
         self.btn_single_browse_long.clicked.connect(lambda: self.select_file('long_single'))
@@ -212,12 +250,12 @@ class AudioMatcherApp(QMainWindow):
         lbl_query_text.setFixedWidth(LABEL_WIDTH)
         
         self.input_query = QLineEdit()
-        self.input_query.setPlaceholderText("Hledej audio v DB")
+        self.input_query.setPlaceholderText("Hledejte vzorek v DB (např. 'people', ...)")
         self.input_query.setFixedWidth(INPUT_WIDTH)
         add_search_icon_to_lineedit(self.input_query)
         self.input_query.returnPressed.connect(self.load_query_from_folder)
         
-        self.btn_browse_query = QPushButton("Procházet...")
+        self.btn_browse_query = QPushButton("Procházet vlastní...")
         self.btn_browse_query.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_browse_query.setStyleSheet(browse_btn_style)
         self.btn_browse_query.clicked.connect(lambda: self.select_file('query_single'))
@@ -256,7 +294,7 @@ class AudioMatcherApp(QMainWindow):
         sep.setStyleSheet("background-color: #e5e7eb; margin: 5px 0;")
         input_layout.addWidget(sep)
 
-        # --- SEKCE TLAČÍTEK ---
+       # --- SEKCE TLAČÍTEK ---
         controls_layout = QHBoxLayout()
         self.btn_analyze = QPushButton("SPUSTIT ANALÝZU")
         self.btn_analyze.setObjectName("primaryButton")
@@ -270,20 +308,25 @@ class AudioMatcherApp(QMainWindow):
         self.btn_next.clicked.connect(self.run_single_next)
         self.btn_next.setEnabled(False)
 
+        # Tlačítko přesunuto sem vedle "Zobrazit další nález"
+        self.btn_visual = QPushButton("Vizuální srovnání")
+        self.btn_visual.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_visual.setStyleSheet(browse_btn_style)
+        self.btn_visual.clicked.connect(lambda: self.open_visual_comparison(self.single_current_result))
+        self.btn_visual.setEnabled(False)
+
         controls_layout.addWidget(self.btn_analyze)
         controls_layout.addWidget(self.btn_next)
-        controls_layout.addStretch()
+        controls_layout.addWidget(self.btn_visual)
+        controls_layout.addStretch() # Natažení mezery až za vizuálním srovnáním
         
         self.btn_listen_L, self.btn_listen_stereo, self.btn_listen_R = self.create_listen_buttons(self.play_single)
         for btn in [self.btn_listen_L, self.btn_listen_stereo, self.btn_listen_R]:
-            btn.setStyleSheet(browse_btn_style); btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setStyleSheet(browse_btn_style)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setEnabled(False) # Zablokování tlačítek pro přehrávání po startu
             controls_layout.addWidget(btn)
             
-        self.btn_visual = QPushButton("Vizuální srovnání")
-        self.btn_visual.setCursor(Qt.CursorShape.PointingHandCursor); self.btn_visual.setStyleSheet(browse_btn_style)
-        self.btn_visual.clicked.connect(lambda: self.open_visual_comparison(self.single_current_result))
-        self.btn_visual.setEnabled(False)
-        controls_layout.addWidget(self.btn_visual)
         input_layout.addLayout(controls_layout)
 
         # --- STAV ---
@@ -302,13 +345,30 @@ class AudioMatcherApp(QMainWindow):
     # ==========================================
     def setup_corpus_tab(self):
         layout = QVBoxLayout(self.tab_corpus)
+        layout.setSpacing(15) # Sjednocení vnějších mezer
         layout.setContentsMargins(20, 20, 20, 20)
         
         input_frame = QFrame()
         input_frame.setObjectName("cardPanel")
-        input_layout = QHBoxLayout(input_frame)
         
-        self.btn_corpus_long = QPushButton("Vybrat Audio (Korpus)")
+        # Změněno z QHBoxLayout na QVBoxLayout a přidány stejné okraje
+        input_layout = QVBoxLayout(input_frame)
+        input_layout.setSpacing(15)
+        input_layout.setContentsMargins(20, 20, 20, 20)
+
+        # --- NADPIS A POPIS ---
+        title_corpus = QLabel("Analýza korpusu")
+        title_corpus.setStyleSheet("font-size: 14pt; font-weight: bold;")
+        desc_corpus = QLabel("Nástroj pro hromadné prohledání nahrávky a detekci všech výskytů podle zvoleného analytického modelu.")
+        desc_corpus.setStyleSheet("color: #6b7280; margin-bottom: 10px;")
+        
+        input_layout.addWidget(title_corpus)
+        input_layout.addWidget(desc_corpus)
+        
+        # --- OVLÁDACÍ PRVKY V ŘÁDKU ---
+        controls_layout = QHBoxLayout()
+        
+        self.btn_corpus_long = QPushButton("Vybrat delší nahrávku")
         self.lbl_corpus_long = QLabel("Nebylo vybráno")
         self.btn_corpus_long.clicked.connect(lambda: self.select_file('long_corpus'))
         
@@ -316,28 +376,39 @@ class AudioMatcherApp(QMainWindow):
         self.combo_corpus_method.setCursor(Qt.CursorShape.PointingHandCursor)
         self.combo_corpus_method.addItems([
             "OpenAI Whisper (ASR)", 
-            "Whisper + Fuzzy Matching",
             "Whisper + DTW Hybrid",
             "Wav2Vec 2.0 + DTW", 
             "MFCC + DTW", 
             "Pattern Matching"
         ])
         self.combo_corpus_method.setItemData(0, "whisper")
-        self.combo_corpus_method.setItemData(1, "whisper_fuzzy")
-        self.combo_corpus_method.setItemData(2, "whisper_hybrid")
-        self.combo_corpus_method.setItemData(3, "wav2vec")
-        self.combo_corpus_method.setItemData(4, "dtw")
-        self.combo_corpus_method.setItemData(5, "pattern")
+        self.combo_corpus_method.setItemData(1, "whisper_hybrid")
+        self.combo_corpus_method.setItemData(2, "wav2vec")
+        self.combo_corpus_method.setItemData(3, "dtw")
+        self.combo_corpus_method.setItemData(4, "pattern")
         
         self.btn_corpus_scan = QPushButton("SKENOVAT KORPUS")
         self.btn_corpus_scan.setObjectName("primaryButton")
         self.btn_corpus_scan.clicked.connect(self.run_corpus_scan)
+
+        # NOVÉ: Tlačítko pro pauzu
+        self.btn_corpus_pause = QPushButton("POZASTAVENÍ ANALÝZY")
+        self.btn_corpus_pause.setEnabled(False) # Aktivuje se až při běhu
+        self.btn_corpus_pause.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_corpus_pause.clicked.connect(self.toggle_corpus_pause)
         
-        input_layout.addWidget(self.btn_corpus_long)
-        input_layout.addWidget(self.lbl_corpus_long)
-        input_layout.addStretch(1)
-        input_layout.addWidget(self.combo_corpus_method)
-        input_layout.addWidget(self.btn_corpus_scan)
+        # Propojení změny modelu se schováním textu
+        self.combo_corpus_method.currentIndexChanged.connect(self.on_corpus_method_changed)
+        
+        controls_layout.addWidget(self.btn_corpus_long)
+        controls_layout.addWidget(self.lbl_corpus_long)
+        controls_layout.addStretch(1)
+        controls_layout.addWidget(self.combo_corpus_method)
+        controls_layout.addWidget(self.btn_corpus_pause) # Přidáno do layoutu
+        controls_layout.addWidget(self.btn_corpus_scan)
+
+        # Celý řádek přidáme pod nadpis
+        input_layout.addLayout(controls_layout)
 
         self.progress_corpus = QProgressBar()
         self.progress_corpus.setFixedHeight(6)
@@ -349,6 +420,38 @@ class AudioMatcherApp(QMainWindow):
         self.log_corpus.setMaximumHeight(80)
         self.log_corpus.setPlaceholderText("Zde se bude vypisovat postup skenování korpusu...")
 
+        # --- Rámeček pro zobrazení textu nahrávky ---
+        self.frame_corpus_gt = QFrame()
+        self.frame_corpus_gt.setStyleSheet("""
+            QFrame {
+                background-color: #ecfdf5; 
+                border: 1px solid #6ee7b7; 
+                border-radius: 6px; 
+            }
+        """)
+        gt_layout = QVBoxLayout(self.frame_corpus_gt)
+        gt_layout.setContentsMargins(10, 10, 10, 10)
+        gt_layout.setSpacing(6) # <- Zde se teď nastavuje mezera mezi prvním a druhým textem
+        
+        # Jednotný styl pro oba texty (garantuje 0 pixelů odskok)
+        common_style = "color: #065f46; background: transparent; border: none; font-size: 10pt; margin: 0px; padding: 0px;"
+        
+        self.lbl_corpus_gt = QLabel()
+        self.lbl_corpus_gt.setWordWrap(True)
+        self.lbl_corpus_gt.setStyleSheet(common_style)
+        gt_layout.addWidget(self.lbl_corpus_gt)
+        
+        self.lbl_whisper_text = QLabel()
+        self.lbl_whisper_text.setWordWrap(True)
+        self.lbl_whisper_text.setStyleSheet(common_style)
+        self.lbl_whisper_text.hide()
+        self.lbl_whisper_text.setText("")
+        gt_layout.addWidget(self.lbl_whisper_text)
+        
+        self.frame_corpus_gt.hide()
+        # --------------------------------------------------
+        # --------------------------------------------------
+
         self.table = QTableWidget()
         self.table.setColumnCount(3)
         self.table.setHorizontalHeaderLabels(["Slovo", "Skóre", "Čas (s)"])
@@ -356,13 +459,17 @@ class AudioMatcherApp(QMainWindow):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.verticalHeader().setDefaultSectionSize(40) 
         
+        # NOVÉ: Skrytí šedého pruhu u prázdných řádků
+        self.table.setStyleSheet("QHeaderView { background-color: #ffffff; border: none; }")
+        
         self.canvas_corpus = FigureCanvas(Figure(figsize=(8, 5), dpi=100))
         self.canvas_corpus.figure.patch.set_facecolor('#f3f4f6') 
 
         layout.addWidget(input_frame)
         layout.addWidget(self.progress_corpus)
         layout.addWidget(self.log_corpus)
-        layout.addWidget(self.table, 1)
+        layout.addWidget(self.frame_corpus_gt) # Vložen rámeček nad tabulku
+        layout.addWidget(self.table, 4)
         layout.addWidget(self.canvas_corpus, 1)
 
     # ==========================================
@@ -376,6 +483,9 @@ class AudioMatcherApp(QMainWindow):
         batch_frame = QFrame()
         batch_frame.setObjectName("cardPanel")
         batch_layout = QVBoxLayout(batch_frame)
+
+        batch_layout.setSpacing(15)
+        batch_layout.setContentsMargins(20, 20, 20, 20)
         
         title_batch = QLabel("Kvantitativní evaluace")
         title_batch.setStyleSheet("font-size: 14pt; font-weight: bold;")
@@ -504,7 +614,7 @@ class AudioMatcherApp(QMainWindow):
 
         # -------- ROW 3: Model a Práh (Práh posunut vpravo) --------
         row3 = QHBoxLayout()
-        lbl_model_text = QLabel("Vyberte si model:")
+        lbl_model_text = QLabel("Analytický model:")
         lbl_model_text.setFixedWidth(LABEL_WIDTH)
         
         self.combo_batch_method = QComboBox()
@@ -623,6 +733,79 @@ class AudioMatcherApp(QMainWindow):
     # ⚙️ LOGIKA A OBSLUHA
     # ==========================================
 
+    def display_ground_truth_text(self, audio_path):
+        """Vyhledá referenční text nahrávky v JSONu a zobrazí ho nad tabulkou."""
+        import json
+        filename = os.path.basename(audio_path)
+        filename_no_ext = os.path.splitext(filename)[0]
+        
+        # Hledáme na více místech (ve složce s DB, v nadřazené složce, i v kořenové složce aplikace)
+        base_dir = os.path.dirname(APP_CFG.offline_db_path)
+        root_dir = os.path.dirname(base_dir)
+        
+        gt_filenames = [
+            "virtual_stream_ground_truth.json"
+        ]
+        
+        gt_data = None
+        loaded_path = ""
+        
+        # Zkusíme projít všechny kombinace cest
+        for d in [base_dir, root_dir, os.getcwd()]:
+            for f_name in gt_filenames:
+                p = os.path.join(d, f_name)
+                if os.path.exists(p):
+                    try:
+                        with open(p, 'r', encoding='utf-8') as f:
+                            gt_data = json.load(f)
+                            loaded_path = p
+                        break
+                    except Exception:
+                        pass
+            if gt_data:
+                break
+                
+        if not gt_data:
+            self.log_corpus.append("ℹ️ Poznámka: Nepodařilo se najít JSON soubor se zlatým standardem.")
+            self.frame_corpus_gt.hide()
+            return
+            
+        matching_words = []
+        for w in gt_data:
+            # Ochrana pro případ, že struktura JSONu není přesně slovník
+            if not isinstance(w, dict):
+                continue
+                
+            src = w.get('source_file') or w.get('filename') or ""
+            
+            # Bezpečné porovnání (bude fungovat i když je v JSONu cesta např. "cv_16k_wav/sample-000008.wav")
+            if filename in src or filename_no_ext in src:
+                # Preferujeme orthographic, ale máme záložní varianty
+                text = w.get('orthographic') or w.get('word') or w.get('text')
+                start_time = w.get('start') or w.get('stream_start') or 0.0
+                
+                if text:
+                    matching_words.append({
+                        "text": str(text),
+                        "start": float(start_time)
+                    })
+                    
+        if matching_words:
+            # Seřadíme slova chronologicky podle času, aby věta dávala smysl
+            matching_words.sort(key=lambda x: x["start"])
+            
+            # Vyčistíme mezery a pospojujeme do finální věty
+            words_list = [item["text"].strip() for item in matching_words]
+            full_text = " ".join(words_list)
+            
+            self.lbl_corpus_gt.setText(f"<b>Přepis nahrávky '{filename}' (Zlatý standard):</b> {full_text}")
+            self.frame_corpus_gt.show()
+            self.log_corpus.append(f"✅ Načten a složen referenční text ze souboru: {os.path.basename(loaded_path)}")
+        else:
+            self.log_corpus.append(f"ℹ️ Poznámka: V JSONu ({os.path.basename(loaded_path)}) nebyl nalezen žádný text pro nahrávku '{filename}'.")
+            self.frame_corpus_gt.hide()
+    
+    
     def select_gt_file(self):
         path, _ = QFileDialog.getOpenFileName(self, "Vyberte zlatý standard", "", "JSON (*.json)")
         if path:
@@ -882,6 +1065,8 @@ class AudioMatcherApp(QMainWindow):
         elif type_ == 'long_corpus': 
             self.path_long_corpus = path
             self.lbl_corpus_long.setText(name)
+            # NOVÉ: Načte text, když uživatel vybere soubor pro korpus
+            self.display_ground_truth_text(path)
 
     def load_single_long_from_folder(self):
         audio_name = self.input_single_long.text().strip()
@@ -922,6 +1107,13 @@ class AudioMatcherApp(QMainWindow):
         self.log_text.clear()
         self.single_found_ranges = [] 
         self.btn_analyze.setEnabled(False)
+        
+        # Zablokování všech interakčních tlačítek během výpočtu
+        self.btn_next.setEnabled(False)
+        self.btn_visual.setEnabled(False)
+        for btn in [self.btn_listen_L, self.btn_listen_stereo, self.btn_listen_R]:
+            btn.setEnabled(False)
+            
         self.progress_detail.setValue(0)
         
         if not hasattr(self, 'path_long_single') or not hasattr(self, 'path_query'):
@@ -980,18 +1172,26 @@ class AudioMatcherApp(QMainWindow):
         self.progress_detail.setValue(100)
         
         if not res.is_success:
-            self.log_text.append(f"Informace: {res.error}")
-            if "(již) nalezeno" in res.error:
-                QMessageBox.information(self, "Konec hledání", res.error)
+            if "(již) nalezeno" in (res.error or ""):
+                self.log_text.append("Hledání dokončeno.")
+                self.show_msg("Konec hledání", "(již) nalezeno", QMessageBox.Icon.Information)
             else:
-                QMessageBox.critical(self, "Chyba", res.error)
+                # Vypíše celý dlouhý strom chyby do konzole v aplikaci
+                self.log_text.append(f"\n❌ DETAILNÍ VÝPIS CHYBY:\n{res.error}\n")
+                
+                # V popupu ukáže jen varování
+                self.show_msg("Kritická chyba", "Aplikace spadla. Podívejte se do konzole dole na celý výpis chyby.", QMessageBox.Icon.Critical)
             return
             
         self.log_text.append(f"✅ Nalezeno! Čas: {res.start_f / (res.sr / AUDIO_CFG.hop_length):.2f} s")
         self.single_current_result = res
         self.single_found_ranges.append((res.start_f, res.end_f))
+        
+        # Odemknutí všech tlačítek, protože máme platný výsledek
         self.btn_next.setEnabled(True)
         self.btn_visual.setEnabled(True)
+        for btn in [self.btn_listen_L, self.btn_listen_stereo, self.btn_listen_R]:
+            btn.setEnabled(True)
         
         try:
             self.draw_results(res, self.canvas_single, self.single_found_ranges)
@@ -1001,16 +1201,17 @@ class AudioMatcherApp(QMainWindow):
     def update_corpus_progress(self, val, msg):
         self.progress_corpus.setValue(val)
         if msg:
-            self.log_corpus.append(f"⏳ {msg}")
+            self.log_corpus.append(f"{msg}")
             sb = self.log_corpus.verticalScrollBar()
             sb.setValue(sb.maximum())
 
     def run_corpus_scan(self):
         if not hasattr(self, 'path_long_corpus') or not self.path_long_corpus:
-            QMessageBox.warning(self, "Chyba", "Nejprve vyberte dlouhé audio (Korpus).")
+            QMessageBox.warning(self, "Chyba", "Nejprve vyberte dlouhé audio.")
             return
             
         self.btn_corpus_scan.setEnabled(False)
+        self.btn_corpus_pause.setEnabled(True)
         self.log_corpus.clear()
         self.progress_corpus.setValue(0)
         self.table.setRowCount(0)
@@ -1022,12 +1223,19 @@ class AudioMatcherApp(QMainWindow):
 
     def on_corpus_scan_finished(self, res):
         self.btn_corpus_scan.setEnabled(True)
+        self.btn_corpus_pause.setEnabled(False)
         self.progress_corpus.setValue(100)
         
         if res["type"] == "error": 
             self.log_corpus.append(f"❌ Chyba: {res.get('msg', 'Neznámá chyba')}")
             return
-            
+
+        whisper_text = res.get('whisper_text', '')
+        if whisper_text:
+            self.lbl_whisper_text.setText(f"<b>Surový přepis Whisperu:</b> {whisper_text}")
+            self.lbl_whisper_text.show()
+            self.frame_corpus_gt.show()
+           
         self.log_corpus.append("✅ Analýza úspěšně dokončena! Vykresluji výsledky...")
         
         all_results = res['results']
@@ -1085,6 +1293,25 @@ class AudioMatcherApp(QMainWindow):
             time_sec = row['start_f'] * AUDIO_CFG.hop_length / res['sr']
             self.table.setItem(i, 2, QTableWidgetItem(f"{time_sec:.1f}"))
 
+    def on_corpus_method_changed(self):
+        """Schová přepis Whisperu, pokud se změní model nebo je vybrán ne-Whisper model."""
+        self.lbl_whisper_text.hide()
+        self.lbl_whisper_text.setText("")
+        # Pokud v GT rámci nic nezbylo (není tam ani zlatý standard), schováme celý rámec
+        if not self.lbl_corpus_gt.text():
+            self.frame_corpus_gt.hide()
+
+    def toggle_corpus_pause(self):
+        """Přepíná stav pauzy ve workeru a mění text tlačítka."""
+        if hasattr(self, 'worker2') and self.worker2.isRunning():
+            is_paused = self.worker2.toggle_pause()
+            self.btn_corpus_pause.setText("POKRAČOVAT" if is_paused else "PAUZA")
+            # Vizuální odlišení pauzy
+            if is_paused:
+                self.btn_corpus_pause.setStyleSheet("background-color: #fef3c7; color: #92400e; font-weight: bold;")
+            else:
+                self.btn_corpus_pause.setStyleSheet("")
+
     def play_specific_corpus_word(self, row_idx):
         if not self.corpus_data or 'results' not in self.corpus_data: return
 
@@ -1117,6 +1344,9 @@ class AudioMatcherApp(QMainWindow):
     def draw_results(self, res: MatchResult, canvas, found_ranges):
         canvas.figure.clear()
         ax1, ax2 = canvas.figure.subplots(1, 2)
+
+        ax1.set_facecolor('#000000')
+        ax2.set_facecolor('#000000')
         
         frames_per_sec = res.sr / AUDIO_CFG.hop_length
         target_frames = int(10.0 * frames_per_sec)
@@ -1161,9 +1391,6 @@ class AudioMatcherApp(QMainWindow):
         ax1.set_xlim(0, 10.0)
         ax1.margins(x=0, y=0)
         
-        # Legenda (Colorbar) k levému grafu
-        canvas.figure.colorbar(img1, ax=ax1, format="%+2.0f dB", fraction=0.046, pad=0.04)
-        
         # ---------------------------------------------
         # PRAVÝ GRAF (Detail nálezu z Korpusu)
         # ---------------------------------------------
@@ -1191,10 +1418,9 @@ class AudioMatcherApp(QMainWindow):
         ax2.set_title(f"Detail nálezu | Skutečný čas v nahrávce: {start_s:.2f} s")
         ax2.set_xlabel("Absolutní čas nahrávky (s)")
         
-        # ZDE ODSTRANĚNO: ax2.set_ylabel(...) a colorbar(img2)
-        ax2.set_ylabel("") # Prázdný popisek
+        ax2.set_ylabel("")
         ax2.set_yticks(y_ticks)
-        ax2.tick_params(axis='y', labelleft=False) # Skrytí čísel na ose Y u pravého grafu
+        ax2.tick_params(axis='y', labelleft=True)
         
         ax2.set_ylim(0, num_mels)
         ax2.margins(x=0, y=0)
@@ -1204,7 +1430,6 @@ class AudioMatcherApp(QMainWindow):
         ax2.set_xticklabels(x_ticks_labels)
         ax2.set_xlim(0, 10.0)
         
-        # Vykreslení překrytí pro nalezené úseky (zelené/šedé boxy)
         for i, (f_start, f_end) in enumerate(found_ranges):
             s_start = f_start / frames_per_sec
             s_end = f_end / frames_per_sec
@@ -1218,10 +1443,13 @@ class AudioMatcherApp(QMainWindow):
                     ax2.axvspan(local_start_s, local_end_s, color='#10b981', alpha=0.4)
                 else:
                     ax2.axvspan(local_start_s, local_end_s, color='#9ca3af', alpha=0.5)
-        
-        canvas.figure.subplots_adjust(left=0.06, right=0.96, bottom=0.12, top=0.90, wspace=0.15) # wspace zmenšen pro přiblížení grafů
-        canvas.draw()
 
+        # --- ZDE PŘIDÁVÁME LEGENDU K PRAVÉMU GRAFU (ax2) ---
+        canvas.figure.colorbar(img2, ax=ax2, format="%+2.0f dB", fraction=0.046, pad=0.04)
+
+        # Úprava okrajů, aby se legenda vpravo vešla
+        canvas.figure.subplots_adjust(left=0.06, right=0.92, bottom=0.12, top=0.90, wspace=0.10) 
+        canvas.draw()
     # ==========================================
     # 🔊 ZVUKOVÉ FUNKCE
     # ==========================================
@@ -1305,13 +1533,17 @@ class AudioMatcherApp(QMainWindow):
         dlg = VisualCompareDialog(res, self)
         dlg.exec()
         
-    def apply_native_titlebar_color(self, hex_bg="#10b981", hex_text="#ffffff"):
+    def apply_native_titlebar_color(self, target_widget=None, hex_bg="#10b981", hex_text="#ffffff"):
         if sys.platform != "win32":
             return
+            
+        # Pokud není specifikován widget, obarvíme hlavní okno (self)
+        widget = target_widget if target_widget else self
+        
         try:
             DWMWA_CAPTION_COLOR = 35
             DWMWA_TEXT_COLOR = 36
-            hwnd = HWND(int(self.winId()))
+            hwnd = HWND(int(widget.winId()))
             
             bg = hex_bg.lstrip('#')
             bg_colorref = (int(bg[4:6], 16) << 16) | (int(bg[2:4], 16) << 8) | int(bg[0:2], 16)
@@ -1325,6 +1557,17 @@ class AudioMatcherApp(QMainWindow):
                 hwnd, DWORD(DWMWA_TEXT_COLOR), ctypes.byref(DWORD(txt_colorref)), ctypes.sizeof(DWORD))
         except Exception as e:
             print(f"Nepodařilo se obarvit horní lištu: {e}")
+
+    def show_msg(self, title, text, icon=QMessageBox.Icon.Information):
+        """Vytvoří QMessageBox, obarví mu lištu a zobrazí ho."""
+        msg = QMessageBox(self)
+        msg.setWindowTitle(title)
+        msg.setText(text)
+        msg.setIcon(icon)
+        
+        # Aplikujeme zelenou lištu předtím, než se dialog ukáže
+        self.apply_native_titlebar_color(target_widget=msg)
+        msg.exec()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

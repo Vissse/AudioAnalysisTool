@@ -1,8 +1,16 @@
 import os
+import sys
 import json
 from dataclasses import dataclass, asdict
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Chytřejší určení BASE_DIR - funguje z Python skriptu i zkompilovaného .exe
+if getattr(sys, 'frozen', False):
+    # Aplikace běží jako zkompilovaný .exe
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    # Aplikace běží jako Python skript
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 SETTINGS_FILE = os.path.join(BASE_DIR, "app_settings.json")
 
 @dataclass
@@ -28,7 +36,6 @@ class AppConfig:
     max_speed_ratio: float = 2.0
     supported_extensions: tuple = ("", ".wav", ".mp3", ".m4a", ".flac", ".ogg")
     
-    fuzzy_cutoff: float = 0.8
     whisper_min_confidence: float = 0.0
     hybrid_padding_sec: float = 0.5
     exclusion_padding_frames: int = 0
@@ -66,6 +73,15 @@ APP_CFG = AppConfig()
 MODEL_CFG = AIModelConfig()
 UI_CFG = UIConfig()
 
+def get_default_settings():
+    """Vrací slovník s výchozími hodnotami."""
+    return {
+        "audio": asdict(AudioConfig()),
+        "app": asdict(AppConfig()),
+        "model": asdict(AIModelConfig()),
+        "ui": asdict(UIConfig())
+    }
+
 def save_settings():
     """Atomicky serializuje aktuální stav konfigurace do JSON souboru."""
     data = {
@@ -90,24 +106,32 @@ def save_settings():
             os.remove(temp_file)
 
 def load_settings():
-    """Načte konfiguraci z JSON souboru a přepíše globální instance."""
+    """Načte konfiguraci, nebo vytvoří výchozí, pokud soubor neexistuje."""
     if not os.path.exists(SETTINGS_FILE):
-        return
-    try:
-        with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        print(f"Konfigurační soubor nebyl nalezen. Generuji výchozí: {SETTINGS_FILE}")
+        # Nastavíme globální instance na výchozí hodnoty
+        data = get_default_settings()
+        # A rovnou je uložíme do nového souboru
+        try:
+            with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+             print(f"Nepodařilo se vytvořit výchozí konfiguraci: {e}")
+    else:
+        try:
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                
+            if "audio" in data: AUDIO_CFG.__dict__.update(data["audio"])
+            if "app" in data: APP_CFG.__dict__.update(data["app"])
+            if "model" in data: MODEL_CFG.__dict__.update(data["model"])
+            if "ui" in data: UI_CFG.__dict__.update(data["ui"])
             
-        if "audio" in data: AUDIO_CFG.__dict__.update(data["audio"])
-        if "app" in data: APP_CFG.__dict__.update(data["app"])
-        if "model" in data: MODEL_CFG.__dict__.update(data["model"])
-        if "ui" in data: UI_CFG.__dict__.update(data["ui"])
-        
-        APP_CFG.supported_extensions = tuple(APP_CFG.supported_extensions)
-    except Exception as e:
-        print(f"Chyba při načítání nastavení: {e}")
+            APP_CFG.supported_extensions = tuple(APP_CFG.supported_extensions)
+        except Exception as e:
+            print(f"Chyba při načítání nastavení: {e}")
 
 load_settings()
-
 MODERN_STYLESHEET = """
 /* Vaše původní styly z minula... */
 QMainWindow, QDialog { background-color: #f3f4f6; color: #1f2937; font-family: 'Segoe UI', -apple-system, Roboto, sans-serif; font-size: 9pt; }
