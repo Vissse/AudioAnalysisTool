@@ -387,12 +387,12 @@ class AudioMatcherApp(QMainWindow):
         self.combo_corpus_method.setItemData(3, "dtw")
         self.combo_corpus_method.setItemData(4, "pattern")
         
-        self.btn_corpus_scan = QPushButton("SKENOVAT KORPUS")
+        self.btn_corpus_scan = QPushButton("ANALYZOVAT KORPUS")
         self.btn_corpus_scan.setObjectName("primaryButton")
         self.btn_corpus_scan.clicked.connect(self.run_corpus_scan)
 
         # NOVÉ: Tlačítko pro pauzu
-        self.btn_corpus_pause = QPushButton("POZASTAVENÍ ANALÝZY")
+        self.btn_corpus_pause = QPushButton("Pozastavení analýzy")
         self.btn_corpus_pause.setEnabled(False) # Aktivuje se až při běhu
         self.btn_corpus_pause.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_corpus_pause.clicked.connect(self.toggle_corpus_pause)
