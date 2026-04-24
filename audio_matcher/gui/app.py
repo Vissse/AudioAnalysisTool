@@ -69,10 +69,10 @@ class AudioMatcherApp(QMainWindow):
     
     def center_window(self):
         """Vycentruje okno aplikace přesně doprostřed aktuálního monitoru."""
-        qr = self.frameGeometry() # Získá aktuální geometrii okna (včetně lišty)
-        cp = self.screen().availableGeometry().center() # Najde střed obrazovky
-        qr.moveCenter(cp) # Přesune pomyslný obdélník okna na střed obrazovky
-        self.move(qr.topLeft()) # Skutečně přesune okno aplikace na tyto nové souřadnice
+        qr = self.frameGeometry()
+        cp = self.screen().availableGeometry().center()
+        qr.moveCenter(cp)
+        self.move(qr.topLeft())
         
     def init_ui(self):
         main_widget = QWidget()
@@ -108,7 +108,6 @@ class AudioMatcherApp(QMainWindow):
         """)
 
         self.btn_settings = QPushButton("Nastavení")
-        # Změna kurzoru na ručičku při najetí
         self.btn_settings.setCursor(Qt.CursorShape.PointingHandCursor) 
         self.btn_settings.setStyleSheet("""
             QPushButton { 
@@ -211,7 +210,7 @@ class AudioMatcherApp(QMainWindow):
 
         def add_search_icon_to_lineedit(line_edit: QLineEdit):
             from PyQt6.QtGui import QIcon
-            search_icon = QIcon('assets/search.png')
+            search_icon = QIcon(APP_CFG.search_icon_path)
             search_action = line_edit.addAction(search_icon, QLineEdit.ActionPosition.TrailingPosition)
             line_edit.setStyleSheet(f"QLineEdit {{ padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; background-color: white; font-size: 10pt; }} QLineEdit:focus {{ border: 1px solid #10b981; }}")
             search_action.triggered.connect(line_edit.returnPressed)
@@ -273,7 +272,7 @@ class AudioMatcherApp(QMainWindow):
 
         # -------- ROW 3: Model --------
         row3 = QHBoxLayout()
-        lbl_model_text = QLabel("Analytický Model:")
+        lbl_model_text = QLabel("Analytický model:")
         lbl_model_text.setFixedWidth(LABEL_WIDTH)
         
         self.combo_method = QComboBox()
@@ -302,13 +301,25 @@ class AudioMatcherApp(QMainWindow):
         self.btn_analyze.setMinimumWidth(180)
         self.btn_analyze.clicked.connect(self.run_single_analysis)
         
+        # --- NOVÁ TLAČÍTKA PRO TAB 1 ---
+        self.btn_single_pause = QPushButton("Pauza")
+        self.btn_single_pause.setEnabled(False)
+        self.btn_single_pause.setStyleSheet(browse_btn_style)
+        self.btn_single_pause.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_single_pause.clicked.connect(self.toggle_single_pause)
+        
+        self.btn_single_stop = QPushButton("Zrušit")
+        self.btn_single_stop.setEnabled(False)
+        self.btn_single_stop.setStyleSheet("color: #dc2626; font-weight: bold; background-color: #f3f4f6; border: 1px solid #d1d5db; border-radius: 4px; padding: 6px 15px;")
+        self.btn_single_stop.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_single_stop.clicked.connect(self.stop_single_scan)
+
         self.btn_next = QPushButton("Zobrazit další nález")
         self.btn_next.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_next.setStyleSheet(browse_btn_style)
         self.btn_next.clicked.connect(self.run_single_next)
         self.btn_next.setEnabled(False)
 
-        # Tlačítko přesunuto sem vedle "Zobrazit další nález"
         self.btn_visual = QPushButton("Vizuální srovnání")
         self.btn_visual.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_visual.setStyleSheet(browse_btn_style)
@@ -316,15 +327,17 @@ class AudioMatcherApp(QMainWindow):
         self.btn_visual.setEnabled(False)
 
         controls_layout.addWidget(self.btn_analyze)
+        controls_layout.addWidget(self.btn_single_pause)
+        controls_layout.addWidget(self.btn_single_stop)
         controls_layout.addWidget(self.btn_next)
         controls_layout.addWidget(self.btn_visual)
-        controls_layout.addStretch() # Natažení mezery až za vizuálním srovnáním
+        controls_layout.addStretch() 
         
         self.btn_listen_L, self.btn_listen_stereo, self.btn_listen_R = self.create_listen_buttons(self.play_single)
         for btn in [self.btn_listen_L, self.btn_listen_stereo, self.btn_listen_R]:
             btn.setStyleSheet(browse_btn_style)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setEnabled(False) # Zablokování tlačítek pro přehrávání po startu
+            btn.setEnabled(False) 
             controls_layout.addWidget(btn)
             
         input_layout.addLayout(controls_layout)
@@ -345,13 +358,12 @@ class AudioMatcherApp(QMainWindow):
     # ==========================================
     def setup_corpus_tab(self):
         layout = QVBoxLayout(self.tab_corpus)
-        layout.setSpacing(15) # Sjednocení vnějších mezer
+        layout.setSpacing(15) 
         layout.setContentsMargins(20, 20, 20, 20)
         
         input_frame = QFrame()
         input_frame.setObjectName("cardPanel")
         
-        # Změněno z QHBoxLayout na QVBoxLayout a přidány stejné okraje
         input_layout = QVBoxLayout(input_frame)
         input_layout.setSpacing(15)
         input_layout.setContentsMargins(20, 20, 20, 20)
@@ -364,52 +376,98 @@ class AudioMatcherApp(QMainWindow):
         
         input_layout.addWidget(title_corpus)
         input_layout.addWidget(desc_corpus)
-        
-        # --- OVLÁDACÍ PRVKY V ŘÁDKU ---
-        controls_layout = QHBoxLayout()
-        
-        self.btn_corpus_long = QPushButton("Vybrat delší nahrávku")
-        self.lbl_corpus_long = QLabel("Nebylo vybráno")
+
+        # -------- DEFINICE STYLŮ --------
+        standard_input_style = """
+            QComboBox, QLineEdit { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; background-color: white; font-size: 10pt; }
+            QComboBox:focus, QLineEdit:focus { border: 1px solid #10b981; }
+        """
+        browse_btn_style = """
+            QPushButton { background-color: #f3f4f6; border: 1px solid #d1d5db; border-radius: 4px; padding: 6px 15px; color: #4b5563; font-weight: 500; font-size: 10pt; }
+            QPushButton:hover { background-color: #e5e7eb; border: 1px solid #9ca3af; }
+        """
+        INPUT_WIDTH = 375
+        LABEL_WIDTH = 130
+
+        def add_search_icon_to_lineedit(line_edit: QLineEdit):
+            from PyQt6.QtGui import QIcon
+            search_icon = QIcon(APP_CFG.search_icon_path)
+            search_action = line_edit.addAction(search_icon, QLineEdit.ActionPosition.TrailingPosition)
+            line_edit.setStyleSheet(f"QLineEdit {{ padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; background-color: white; font-size: 10pt; }} QLineEdit:focus {{ border: 1px solid #10b981; }}")
+            search_action.triggered.connect(line_edit.returnPressed)
+            return line_edit
+
+        # -------- ROW 1: Prohledávané Audio --------
+        row1 = QHBoxLayout()
+        lbl_long_text = QLabel("Prohledávané audio:")
+        lbl_long_text.setFixedWidth(LABEL_WIDTH)
+
+        self.input_corpus_long = QLineEdit()
+        self.input_corpus_long.setPlaceholderText("Hledejte audio v DB (zadejte číslo od 0 do 4075)")
+        self.input_corpus_long.setFixedWidth(INPUT_WIDTH)
+        add_search_icon_to_lineedit(self.input_corpus_long)
+        self.input_corpus_long.returnPressed.connect(self.load_corpus_long_from_folder)
+
+        self.btn_corpus_long = QPushButton("Procházet vlastní...")
+        self.btn_corpus_long.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_corpus_long.setStyleSheet(browse_btn_style)
         self.btn_corpus_long.clicked.connect(lambda: self.select_file('long_corpus'))
-        
+
+        self.lbl_corpus_long = QLabel("Nebylo vybráno")
+        self.lbl_corpus_long.setStyleSheet("color: #6b7280; font-style: italic; font-size: 9pt;")
+
+        row1.addWidget(lbl_long_text)
+        row1.addWidget(self.input_corpus_long)
+        row1.addSpacing(10)
+        row1.addWidget(self.btn_corpus_long)
+        row1.addWidget(self.lbl_corpus_long)
+        row1.addStretch()
+        input_layout.addLayout(row1)
+
+        # -------- ROW 2: Analytický model a spuštění --------
+        row2 = QHBoxLayout()
+        lbl_model_text = QLabel("Analytický model:")
+        lbl_model_text.setFixedWidth(LABEL_WIDTH)
+
         self.combo_corpus_method = QComboBox()
         self.combo_corpus_method.setCursor(Qt.CursorShape.PointingHandCursor)
         self.combo_corpus_method.addItems([
-            "OpenAI Whisper (ASR)", 
-            "Whisper + DTW Hybrid",
-            "Wav2Vec 2.0 + DTW", 
-            "MFCC + DTW", 
-            "Pattern Matching"
+            "OpenAI Whisper (ASR)", "Whisper + DTW Hybrid", "Wav2Vec 2.0 + DTW", "MFCC + DTW", "Pattern Matching"
         ])
         self.combo_corpus_method.setItemData(0, "whisper")
         self.combo_corpus_method.setItemData(1, "whisper_hybrid")
         self.combo_corpus_method.setItemData(2, "wav2vec")
         self.combo_corpus_method.setItemData(3, "dtw")
         self.combo_corpus_method.setItemData(4, "pattern")
-        
+        self.combo_corpus_method.setFixedWidth(INPUT_WIDTH)
+        self.combo_corpus_method.setStyleSheet(standard_input_style)
+        self.combo_corpus_method.currentIndexChanged.connect(self.on_corpus_method_changed)
+
+        self.btn_corpus_pause = QPushButton("Pauza")
+        self.btn_corpus_pause.setEnabled(False) 
+        self.btn_corpus_pause.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_corpus_pause.clicked.connect(self.toggle_corpus_pause)
+
+        self.btn_corpus_stop = QPushButton("Zrušit")
+        self.btn_corpus_stop.setEnabled(False)
+        self.btn_corpus_stop.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_corpus_stop.setStyleSheet("color: #dc2626; font-weight: bold;") 
+        self.btn_corpus_stop.clicked.connect(self.stop_corpus_scan)
+
         self.btn_corpus_scan = QPushButton("ANALYZOVAT KORPUS")
         self.btn_corpus_scan.setObjectName("primaryButton")
         self.btn_corpus_scan.clicked.connect(self.run_corpus_scan)
 
-        # NOVÉ: Tlačítko pro pauzu
-        self.btn_corpus_pause = QPushButton("Pozastavení analýzy")
-        self.btn_corpus_pause.setEnabled(False) # Aktivuje se až při běhu
-        self.btn_corpus_pause.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_corpus_pause.clicked.connect(self.toggle_corpus_pause)
-        
-        # Propojení změny modelu se schováním textu
-        self.combo_corpus_method.currentIndexChanged.connect(self.on_corpus_method_changed)
-        
-        controls_layout.addWidget(self.btn_corpus_long)
-        controls_layout.addWidget(self.lbl_corpus_long)
-        controls_layout.addStretch(1)
-        controls_layout.addWidget(self.combo_corpus_method)
-        controls_layout.addWidget(self.btn_corpus_pause) # Přidáno do layoutu
-        controls_layout.addWidget(self.btn_corpus_scan)
+        row2.addWidget(lbl_model_text)
+        row2.addWidget(self.combo_corpus_method)
+        row2.addStretch(1)
+        row2.addWidget(self.btn_corpus_pause)
+        row2.addWidget(self.btn_corpus_stop) 
+        row2.addWidget(self.btn_corpus_scan)
 
-        # Celý řádek přidáme pod nadpis
-        input_layout.addLayout(controls_layout)
+        input_layout.addLayout(row2)
 
+        # --- PROGRESS, LOG A TABULKA ---
         self.progress_corpus = QProgressBar()
         self.progress_corpus.setFixedHeight(6)
         self.progress_corpus.setTextVisible(False)
@@ -420,7 +478,7 @@ class AudioMatcherApp(QMainWindow):
         self.log_corpus.setMaximumHeight(80)
         self.log_corpus.setPlaceholderText("Zde se bude vypisovat postup skenování korpusu...")
 
-        # --- Rámeček pro zobrazení textu nahrávky ---
+        # Rámeček pro zobrazení textu nahrávky
         self.frame_corpus_gt = QFrame()
         self.frame_corpus_gt.setStyleSheet("""
             QFrame {
@@ -431,9 +489,8 @@ class AudioMatcherApp(QMainWindow):
         """)
         gt_layout = QVBoxLayout(self.frame_corpus_gt)
         gt_layout.setContentsMargins(10, 10, 10, 10)
-        gt_layout.setSpacing(6) # <- Zde se teď nastavuje mezera mezi prvním a druhým textem
+        gt_layout.setSpacing(6) 
         
-        # Jednotný styl pro oba texty (garantuje 0 pixelů odskok)
         common_style = "color: #065f46; background: transparent; border: none; font-size: 10pt; margin: 0px; padding: 0px;"
         
         self.lbl_corpus_gt = QLabel()
@@ -449,8 +506,6 @@ class AudioMatcherApp(QMainWindow):
         gt_layout.addWidget(self.lbl_whisper_text)
         
         self.frame_corpus_gt.hide()
-        # --------------------------------------------------
-        # --------------------------------------------------
 
         self.table = QTableWidget()
         self.table.setColumnCount(3)
@@ -459,7 +514,6 @@ class AudioMatcherApp(QMainWindow):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.verticalHeader().setDefaultSectionSize(40) 
         
-        # NOVÉ: Skrytí šedého pruhu u prázdných řádků
         self.table.setStyleSheet("QHeaderView { background-color: #ffffff; border: none; }")
         
         self.canvas_corpus = FigureCanvas(Figure(figsize=(8, 5), dpi=100))
@@ -468,7 +522,7 @@ class AudioMatcherApp(QMainWindow):
         layout.addWidget(input_frame)
         layout.addWidget(self.progress_corpus)
         layout.addWidget(self.log_corpus)
-        layout.addWidget(self.frame_corpus_gt) # Vložen rámeček nad tabulku
+        layout.addWidget(self.frame_corpus_gt)
         layout.addWidget(self.table, 4)
         layout.addWidget(self.canvas_corpus, 1)
 
@@ -531,7 +585,8 @@ class AudioMatcherApp(QMainWindow):
 
         # Pomocná funkce pro lupu (s menším fontem)
         def add_search_icon_to_lineedit(line_edit: QLineEdit):
-            search_icon = QIcon('assets/search.png')
+            from PyQt6.QtGui import QIcon
+            search_icon = QIcon(APP_CFG.search_icon_path)
             search_action = line_edit.addAction(search_icon, QLineEdit.ActionPosition.TrailingPosition)
             line_edit.setStyleSheet(f"QLineEdit {{ padding: 4px 6px; border: 1px solid #d1d5db; border-radius: 4px; background-color: white; font-size: 10pt; }} QLineEdit:focus {{ border: 1px solid #10b981; }}")
             search_action.triggered.connect(line_edit.returnPressed)
@@ -624,32 +679,45 @@ class AudioMatcherApp(QMainWindow):
         self.combo_batch_method.setFixedWidth(INPUT_WIDTH)
         self.combo_batch_method.setStyleSheet(standard_input_style)
         
-        self.btn_batch_model_browse = QPushButton("Procházet vlastní...")
-        self.btn_batch_model_browse.setStyleSheet(browse_btn_style)
-        # Zde můžete napojit funkci pro výběr vlastního modelu (.pt nebo složky)
-        
         row3.addWidget(lbl_model_text)
         row3.addWidget(self.combo_batch_method)
-        row3.addSpacing(15)
-        row3.addWidget(self.btn_batch_model_browse)
-        
-        row3.addStretch() # Toto odsune práh na pravý konec
-        
+        row3.addStretch() # Vyplní zbytek řádku
+        batch_controls.addLayout(row3)
+        # ----------------------------------------
+
+        run_row = QHBoxLayout()
+        self.btn_run_batch = QPushButton("SPUSTIT KVANTITATIVNÍ EVALUACI")
+        self.btn_run_batch.setObjectName("primaryButton")
+        self.btn_run_batch.clicked.connect(self.run_batch_benchmark)
+
+        self.btn_batch_pause = QPushButton("Pauza")
+        self.btn_batch_pause.setEnabled(False)
+        self.btn_batch_pause.setStyleSheet(browse_btn_style)
+        self.btn_batch_pause.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_batch_pause.clicked.connect(self.toggle_batch_pause)
+
+        self.btn_batch_stop = QPushButton("Zrušit")
+        self.btn_batch_stop.setEnabled(False)
+        self.btn_batch_stop.setStyleSheet("color: #dc2626; font-weight: bold; background-color: #f3f4f6; border: 1px solid #d1d5db; border-radius: 4px; padding: 6px 15px;")
+        self.btn_batch_stop.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_batch_stop.clicked.connect(self.stop_batch_scan)
+
+        # Přesunuté prvky pro Maximální práh
         lbl_threshold = QLabel("Maximální práh:")
         self.input_threshold = QLineEdit("1.0") 
         self.input_threshold.setFixedWidth(50)
         self.input_threshold.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.input_threshold.setStyleSheet(standard_input_style)
+
+        # Poskládání prvků do řádku zleva doprava
+        run_row.addWidget(self.btn_run_batch)
+        run_row.addWidget(self.btn_batch_pause)
+        run_row.addWidget(self.btn_batch_stop)
         
-        row3.addWidget(lbl_threshold)
-        row3.addWidget(self.input_threshold)
-        batch_controls.addLayout(row3)
-        # ----------------------------------------
-
-        self.btn_run_batch = QPushButton("SPUSTIT KVANTITATIVNÍ EVALUACI")
-
-        self.btn_run_batch.setObjectName("primaryButton")
-        self.btn_run_batch.clicked.connect(self.run_batch_benchmark)
+        run_row.addStretch() # Toto odsune práh úplně doprava
+        
+        run_row.addWidget(lbl_threshold)
+        run_row.addWidget(self.input_threshold)
 
         self.progress_batch = QProgressBar()
         self.progress_batch.setFixedHeight(6)
@@ -663,9 +731,22 @@ class AudioMatcherApp(QMainWindow):
         self.log_batch.setPlaceholderText("Zde se bude v reálném čase vypisovat postup algoritmu...")
 
         self.table_batch = QTableWidget()
-        self.table_batch.setColumnCount(6)
-        self.table_batch.setHorizontalHeaderLabels(["Slovo", "GT", "Nález", "FRR (%)", "FA/h", "F1"])
-        self.table_batch.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table_batch.setColumnCount(11) 
+        self.table_batch.setHorizontalHeaderLabels([
+            "Slovo", "GT", "Nález", "TP", "FP", "FN",
+            "Prec (%)", "Rec (%)", "FRR (%)", "FA/h", "F1"
+        ])
+    
+        self.table_batch.horizontalHeader().setStretchLastSection(False)
+        
+        # 2. Nastavíme první sloupec (Slovo) jako ten, který vyplní zbytek prostoru (Stretch)
+        self.table_batch.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        
+        # 3. Ostatní sloupce (1 až 10) nastavíme na interaktivní s fixní počáteční šířkou
+        for i in range(1, 11):
+            self.table_batch.horizontalHeader().setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
+            self.table_batch.setColumnWidth(i, 60) # Kompaktní šířka pro čísla
+
         self.table_batch.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table_batch.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table_batch.itemSelectionChanged.connect(self.on_batch_row_selected) 
@@ -721,7 +802,7 @@ class AudioMatcherApp(QMainWindow):
         batch_layout.addWidget(desc_batch)
         batch_layout.addLayout(batch_controls)
         batch_layout.addSpacing(10)
-        batch_layout.addWidget(self.btn_run_batch)
+        batch_layout.addLayout(run_row) 
         batch_layout.addWidget(self.progress_batch)
         batch_layout.addWidget(self.lbl_batch_status)
         batch_layout.addWidget(self.log_batch)
@@ -805,6 +886,36 @@ class AudioMatcherApp(QMainWindow):
             self.log_corpus.append(f"ℹ️ Poznámka: V JSONu ({os.path.basename(loaded_path)}) nebyl nalezen žádný text pro nahrávku '{filename}'.")
             self.frame_corpus_gt.hide()
     
+    def load_corpus_long_from_folder(self):
+        audio_name = self.input_corpus_long.text().strip()
+        if not audio_name: 
+            return
+            
+        # Chytré doplnění čísla
+        if audio_name.isdigit():
+            audio_name = f"sample-{int(audio_name):06d}"
+            self.input_corpus_long.setText(audio_name)
+            
+        base_dir = os.path.dirname(APP_CFG.offline_db_path)
+        possible_dirs = [
+            APP_CFG.offline_db_path, 
+            base_dir, 
+            os.path.join(base_dir, "cv_16k_wav"), 
+            os.path.join(base_dir, "Common Voice Spontaneous Speech 3.0 - English")
+        ]
+        
+        for d in possible_dirs:
+            for ext in APP_CFG.supported_extensions:
+                p = os.path.join(d, audio_name + ext)
+                if os.path.exists(p):
+                    self.path_long_corpus = p
+                    self.lbl_corpus_long.setText(os.path.basename(p))
+                    self.lbl_corpus_long.setStyleSheet("color: #10b981; font-weight: bold; font-size: 9pt;")
+                    self.log_status(f"✅ Audio korpusu '{audio_name}' načteno.")
+                    self.display_ground_truth_text(p)
+                    return
+                    
+        QMessageBox.warning(self, "Chyba", f"Audio '{audio_name}' nebylo nalezeno.")
     
     def select_gt_file(self):
         path, _ = QFileDialog.getOpenFileName(self, "Vyberte zlatý standard", "", "JSON (*.json)")
@@ -828,18 +939,8 @@ class AudioMatcherApp(QMainWindow):
         # Chytré doplnění čísla na formát sample-XXXXXX
         if audio_name.isdigit():
             audio_name = f"sample-{int(audio_name):06d}"
-            self.input_batch_long.setText(audio_name) # Přepíše pole na správný formát
+            self.input_batch_long.setText(audio_name) 
             
-        # Aplikace chytře prohledá známé složky s daty
-        base_dir = os.path.dirname(APP_CFG.offline_db_path)
-        possible_dirs = [
-            APP_CFG.offline_db_path,
-            base_dir,
-            os.path.join(base_dir, "cv_16k_wav"),
-            os.path.join(base_dir, "Common Voice Spontaneous Speech 3.0 - English")
-        ]
-            
-        # Aplikace chytře prohledá známé složky s daty
         base_dir = os.path.dirname(APP_CFG.offline_db_path)
         possible_dirs = [
             APP_CFG.offline_db_path,
@@ -915,7 +1016,11 @@ class AudioMatcherApp(QMainWindow):
                 
         self.txt_batch_detail.clear()
         self.log_batch.clear()
+        
         self.btn_run_batch.setEnabled(False)
+        self.combo_batch_method.setEnabled(False)
+        self.btn_batch_pause.setEnabled(True)
+        self.btn_batch_stop.setEnabled(True)
         
         method = self.combo_batch_method.currentData()
         thr = float(self.input_threshold.text())
@@ -924,67 +1029,64 @@ class AudioMatcherApp(QMainWindow):
         self.worker_batch.progress.connect(lambda v, m: (self.progress_batch.setValue(v), self.lbl_batch_status.setText(m)))
         self.worker_batch.log_msg.connect(self.log_batch_append)
         self.worker_batch.result_row.connect(self.on_batch_row)
-        self.worker_batch.finished.connect(lambda: self.btn_run_batch.setEnabled(True))
+        self.worker_batch.finished.connect(self.on_batch_finished) 
         self.worker_batch.start()
+
+    def on_batch_finished(self):
+        self.btn_run_batch.setEnabled(True)
+        self.combo_batch_method.setEnabled(True)
+        self.btn_batch_pause.setEnabled(False)
+        self.btn_batch_stop.setEnabled(False)
+        self.btn_batch_pause.setText("Pauza")
 
     def on_batch_row(self, data):
         self.batch_detailed_data[data['word']] = data
         row = self.table_batch.rowCount()
         self.table_batch.insertRow(row)
         
-        cell_widget = QWidget()
-        cell_layout = QHBoxLayout(cell_widget)
-        cell_layout.setContentsMargins(5, 2, 5, 2)
-        cell_layout.setSpacing(10)
-        
-        lbl_word = QLabel(data['word'])
-        lbl_word.setStyleSheet("font-weight: bold;")
-        
+        # --- Sloupec 0: Slovo a Play (beze změny) ---
+        cell_widget = QWidget(); cell_layout = QHBoxLayout(cell_widget)
+        cell_layout.setContentsMargins(5, 2, 5, 2); cell_layout.setSpacing(10)
+        lbl_word = QLabel(data['word']); lbl_word.setStyleSheet("font-weight: bold;")
         btn_play = QPushButton()
-        btn_play.setToolTip("Přehrát nálezy")
-        btn_play.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_play.setFixedSize(30, 24)
-        
-        icon_path = os.path.join("assets", "audio.png") 
-        if os.path.exists(icon_path):
-            btn_play.setIcon(QIcon(icon_path))
-            btn_play.setIconSize(QSize(18, 18)) 
+        if os.path.exists(APP_CFG.audio_icon_path):
+            btn_play.setIcon(QIcon(APP_CFG.audio_icon_path))
         else:
             btn_play.setText("🔊")
-
-        btn_play.setStyleSheet("""
-            QPushButton { 
-                background-color: transparent; 
-                border: none; 
-            }
-            QPushButton:hover { 
-                background-color: rgba(16, 185, 129, 0.2); 
-                border-radius: 4px;
-            }
-        """)
-        
+        btn_play.setStyleSheet("QPushButton { background-color: transparent; border: none; }")
         btn_play.clicked.connect(lambda checked, w=data['word']: self.play_exhaustive_word(w))
-        
-        cell_layout.addWidget(lbl_word)
-        cell_layout.addStretch()
-        cell_layout.addWidget(btn_play)
-        
+        cell_layout.addWidget(lbl_word); cell_layout.addStretch(); cell_layout.addWidget(btn_play)
         self.table_batch.setCellWidget(row, 0, cell_widget)
-        
-        self.table_batch.setItem(row, 1, QTableWidgetItem(str(data.get('gt_count', 0))))
-        self.table_batch.setItem(row, 2, QTableWidgetItem(str(data.get('found_count', 0))))
-        self.table_batch.setItem(row, 3, QTableWidgetItem(f"{data.get('frr', 0) * 100:.1f}%"))
-        self.table_batch.setItem(row, 4, QTableWidgetItem(f"{data.get('fa_h', 0):.2f}"))
-        
-        # Výpočet F1 skóre
+
+        # --- 1. Výpočty metrik (MUSÍ BÝT PRVNÍ) ---
+        gt = data.get('gt_count', 0)
         tp = data.get('tp', 0)
         fp = data.get('fp', 0)
         fn = data.get('gt_count', 0) - tp
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+        precision = tp / (tp + fp) * 100 if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) * 100 if (tp + fn) > 0 else 0.0
+        # F1 skóre na škále 0-1 (proto nedělíme * 100 v závorce)
+        f1 = 2 * (precision/100 * recall/100) / (precision/100 + recall/100) if (precision + recall) > 0 else 0.0
         
-        self.table_batch.setItem(row, 5, QTableWidgetItem(f"{f1:.2f}"))
+        # --- 2. Plnění buněk s čísly (indexy 1 až 10) ---
+        hodnoty = [
+            str(gt), 
+            str(data.get('found_count', 0)), 
+            str(tp), 
+            str(fp), 
+            str(fn), 
+            f"{precision:.1f}%", 
+            f"{recall:.1f}%", 
+            f"{data.get('frr', 0) * 100:.1f}%", 
+            f"{data.get('fa_h', 0):.2f}", 
+            f"{f1:.3f}"
+        ]
+
+        for col_idx, hodnota in enumerate(hodnoty, start=1):
+            item = QTableWidgetItem(hodnota)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter) # <-- ZAROVNÁNÍ NA STŘED
+            self.table_batch.setItem(row, col_idx, item)
 
     def on_batch_row_selected(self):
         items = self.table_batch.selectedItems()
@@ -1064,8 +1166,10 @@ class AudioMatcherApp(QMainWindow):
             self.lbl_single_query.setStyleSheet("color: #10b981; font-weight: bold; font-size: 9pt;")
         elif type_ == 'long_corpus': 
             self.path_long_corpus = path
+            self.input_corpus_long.setText(name) # Aktualizuje vyhledávací pole
             self.lbl_corpus_long.setText(name)
-            # NOVÉ: Načte text, když uživatel vybere soubor pro korpus
+            self.lbl_corpus_long.setStyleSheet("color: #10b981; font-weight: bold; font-size: 9pt;")
+            # Načte text, když uživatel vybere soubor pro korpus
             self.display_ground_truth_text(path)
 
     def load_single_long_from_folder(self):
@@ -1103,54 +1207,77 @@ class AudioMatcherApp(QMainWindow):
                 return
         QMessageBox.warning(self, "Chyba", f"Slovo '{word}' nebylo nalezeno.")
 
+    def toggle_single_pause(self):
+        if hasattr(self, 'worker1') and self.worker1.isRunning():
+            is_paused = self.worker1.toggle_pause()
+            self.btn_single_pause.setText("Pokračovat" if is_paused else "Pauza")
+
+    def stop_single_scan(self):
+        if hasattr(self, 'worker1') and self.worker1.isRunning():
+            self.log_text.append("⚠️ Ukončuji analýzu...")
+            QApplication.processEvents()
+            self.btn_single_pause.setEnabled(False)
+            self.btn_single_stop.setEnabled(False)
+            self.worker1.stop()
+            if not self.worker1.wait(500):
+                self.worker1.terminate()
+                self.worker1.wait()
+                self.on_single_finished(MatchResult(score=0, start_f=0, end_f=0, method="", error="Zrušeno uživatelem."))
+
+    def toggle_batch_pause(self):
+        if hasattr(self, 'worker_batch') and self.worker_batch.isRunning():
+            is_paused = self.worker_batch.toggle_pause()
+            self.btn_batch_pause.setText("Pokračovat" if is_paused else "Pauza")
+
+    def stop_batch_scan(self):
+        if hasattr(self, 'worker_batch') and self.worker_batch.isRunning():
+            self.log_batch.append("⚠️ Ukončuji evaluaci...")
+            QApplication.processEvents()
+            self.btn_batch_pause.setEnabled(False)
+            self.btn_batch_stop.setEnabled(False)
+            self.worker_batch.stop()
+            if not self.worker_batch.wait(500):
+                self.worker_batch.terminate()
+                self.worker_batch.wait()
+                self.on_batch_finished()
+                
+    def toggle_corpus_pause(self):
+        """Přepíná stav pauzy ve workeru a mění text tlačítka."""
+        if hasattr(self, 'worker2') and self.worker2.isRunning():
+            is_paused = self.worker2.toggle_pause()
+            self.btn_corpus_pause.setText("POKRAČOVAT" if is_paused else "Pauza")
+            # Vizuální odlišení pauzy
+            if is_paused:
+                self.btn_corpus_pause.setStyleSheet("background-color: #fef3c7; color: #92400e; font-weight: bold;")
+            else:
+                self.btn_corpus_pause.setStyleSheet("")
+
+    def stop_corpus_scan(self):
+        """Požádá Worker o ukončení. Pokud visí v těžkém AI výpočtu, ukončí ho natvrdo."""
+        if hasattr(self, 'worker2') and self.worker2.isRunning():
+            self.log_corpus.append("⚠️ Probíhá okamžité ukončování analýzy...")
+            QApplication.processEvents() # Okamžitě překreslí text v okně, aby uživatel viděl odezvu
+            
+            self.btn_corpus_pause.setEnabled(False)
+            self.btn_corpus_stop.setEnabled(False)
+            
+            # 1. Zkusíme ho ukončit čistě (funguje, pokud zrovna analyzuje cyklus slov)
+            self.worker2.stop()
+            
+            # 2. Počkáme půl sekundy. Pokud stále běží (zasekl se ve Whisperu/PyTorch), odstřelíme ho.
+            if not self.worker2.wait(500):
+                self.worker2.terminate() # Násilné zabití vlákna (hard kill)
+                self.worker2.wait()      # Ujistíme se, že je opravdu mrtvé
+                
+                # Funkce terminate() umlčí vlákno dřív, než stihne UI říct, že skončilo.
+                # Musíme tedy UI resetovat (odemknout tlačítka) manuálně nasimulováním zprávy z vlákna:
+                self.on_corpus_scan_finished({"type": "error", "msg": "Analýza byla přerušena uživatelem."})
+
+
     def run_single_analysis(self):
         self.log_text.clear()
         self.single_found_ranges = [] 
-        self.btn_analyze.setEnabled(False)
-        
-        # Zablokování všech interakčních tlačítek během výpočtu
-        self.btn_next.setEnabled(False)
-        self.btn_visual.setEnabled(False)
-        for btn in [self.btn_listen_L, self.btn_listen_stereo, self.btn_listen_R]:
-            btn.setEnabled(False)
-            
-        self.progress_detail.setValue(0)
-        
-        if not hasattr(self, 'path_long_single') or not hasattr(self, 'path_query'):
-            self.log_text.append("❌ Chyba: Chybí cesta k audiu nebo vzorku.")
-            self.btn_analyze.setEnabled(True)
-            return
-
-        try:
-            method = self.combo_method.currentData()
-            self.log_status(f"Startuji proces analýzy (Metoda: {method})...")
-            self.log_status("Načítám audio korpusu z disku a provádím ořez ticha (VAD)...")
-            y_long, sr_long = load_and_prep(self.path_long_single)
-            self.log_status("Načítám hledaný vzorek a provádím ořez ticha (VAD)...")
-            y_query, sr_query = load_and_prep(self.path_query)
-            
-            from core.audio_utils import get_wav2vec_features, get_mfcc_features, get_math_spectrogram
-            
-            self.log_status(f"Extrahuji akustické rysy ze vzorku...")
-            if method == "wav2vec":
-                query_features = get_wav2vec_features(y_query, sr_query)
-                self.log_status(f"Extrahuji Wav2Vec rysy z celé nahrávky (Délka: {len(y_long)/sr_long:.1f} s)...")
-                long_features = get_wav2vec_features(y_long, sr_long)
-            elif method == "dtw":
-                query_features = get_mfcc_features(y_query, sr_query)
-                self.log_status(f"Extrahuji MFCC rysy z celé nahrávky...")
-                long_features = get_mfcc_features(y_long, sr_long)
-            else:
-                self.log_status("Tento model používá asynchronní Worker, sledujte logy...")
-                self.start_single_worker()
-                return
-
-            self.log_status("Spouštím prohledávací algoritmus (DTW). Tohle může chvíli trvat...")
-            self.start_single_worker()
-
-        except Exception as e:
-            self.log_text.append(f"❌ Došlo k chybě během analýzy: {str(e)}")
-            self.btn_analyze.setEnabled(True)
+        self.start_single_worker()
 
     def run_single_next(self): 
         # HLEDÁNÍ DALŠÍHO VÝSKYTU -> Nemazat single_found_ranges!
@@ -1159,26 +1286,47 @@ class AudioMatcherApp(QMainWindow):
 
     def start_single_worker(self):
         self.btn_analyze.setEnabled(False)
+        self.combo_method.setEnabled(False)
+        self.btn_single_pause.setEnabled(True)
+        self.btn_single_stop.setEnabled(True)
         self.btn_next.setEnabled(False) # Deaktivace po dobu běhu
+        self.btn_visual.setEnabled(False)
+        for btn in [self.btn_listen_L, self.btn_listen_stereo, self.btn_listen_R]:
+            btn.setEnabled(False)
+            
+        self.progress_detail.setValue(0)
         
+        if not hasattr(self, 'path_long_single') or not hasattr(self, 'path_query'):
+            self.log_text.append("❌ Chyba: Chybí cesta k audiu nebo vzorku.")
+            self.on_single_finished(MatchResult(score=0, start_f=0, end_f=0, method="", error="Chyba vstupů"))
+            return
+
+        method = self.combo_method.currentData()
+        self.log_status(f"Startuji proces analýzy (Metoda: {method})...")
+
         # Zde předáváme self.single_found_ranges do Workeru (jako parametr excluded)
-        self.worker1 = SingleAnalysisWorker(self.path_long_single, self.path_query, self.combo_method.currentData(), self.single_found_ranges)
+        self.worker1 = SingleAnalysisWorker(self.path_long_single, self.path_query, method, self.single_found_ranges)
         self.worker1.progress.connect(self.progress_detail.setValue)
         self.worker1.finished.connect(self.on_single_finished)
         self.worker1.start()
 
     def on_single_finished(self, res: MatchResult):
         self.btn_analyze.setEnabled(True)
+        self.combo_method.setEnabled(True)
+        self.btn_single_pause.setEnabled(False)
+        self.btn_single_stop.setEnabled(False)
+        self.btn_single_pause.setText("Pauza")
         self.progress_detail.setValue(100)
         
         if not res.is_success:
             if "(již) nalezeno" in (res.error or ""):
                 self.log_text.append("Hledání dokončeno.")
                 self.show_msg("Konec hledání", "(již) nalezeno", QMessageBox.Icon.Information)
+            elif "Zrušeno" in (res.error or ""):
+                self.log_text.append(f"❌ {res.error}")
             else:
                 # Vypíše celý dlouhý strom chyby do konzole v aplikaci
                 self.log_text.append(f"\n❌ DETAILNÍ VÝPIS CHYBY:\n{res.error}\n")
-                
                 # V popupu ukáže jen varování
                 self.show_msg("Kritická chyba", "Aplikace spadla. Podívejte se do konzole dole na celý výpis chyby.", QMessageBox.Icon.Critical)
             return
@@ -1211,7 +1359,9 @@ class AudioMatcherApp(QMainWindow):
             return
             
         self.btn_corpus_scan.setEnabled(False)
+        self.combo_corpus_method.setEnabled(False) # <--- Zamkne výběr metody
         self.btn_corpus_pause.setEnabled(True)
+        self.btn_corpus_stop.setEnabled(True) # <--- Aktivuje tlačítko zrušit
         self.log_corpus.clear()
         self.progress_corpus.setValue(0)
         self.table.setRowCount(0)
@@ -1223,7 +1373,14 @@ class AudioMatcherApp(QMainWindow):
 
     def on_corpus_scan_finished(self, res):
         self.btn_corpus_scan.setEnabled(True)
+        self.combo_corpus_method.setEnabled(True) # <--- Odemkne výběr metody
         self.btn_corpus_pause.setEnabled(False)
+        self.btn_corpus_stop.setEnabled(False) # <--- Skryje tlačítko zrušit
+        
+        # Reset tlačítka pauzy pro další spuštění
+        self.btn_corpus_pause.setText("Pozastavení analýzy")
+        self.btn_corpus_pause.setStyleSheet("")
+        
         self.progress_corpus.setValue(100)
         
         if res["type"] == "error": 
@@ -1235,7 +1392,7 @@ class AudioMatcherApp(QMainWindow):
             self.lbl_whisper_text.setText(f"<b>Surový přepis Whisperu:</b> {whisper_text}")
             self.lbl_whisper_text.show()
             self.frame_corpus_gt.show()
-           
+            
         self.log_corpus.append("✅ Analýza úspěšně dokončena! Vykresluji výsledky...")
         
         all_results = res['results']
@@ -1269,7 +1426,7 @@ class AudioMatcherApp(QMainWindow):
             btn_play.setCursor(Qt.CursorShape.PointingHandCursor)
             btn_play.setFixedSize(30, 24)
             
-            icon_path = os.path.join("assets", "audio.png") 
+            icon_path = APP_CFG.audio_icon_path
             if os.path.exists(icon_path):
                 btn_play.setIcon(QIcon(icon_path))
                 btn_play.setIconSize(QSize(18, 18)) 
@@ -1300,17 +1457,6 @@ class AudioMatcherApp(QMainWindow):
         # Pokud v GT rámci nic nezbylo (není tam ani zlatý standard), schováme celý rámec
         if not self.lbl_corpus_gt.text():
             self.frame_corpus_gt.hide()
-
-    def toggle_corpus_pause(self):
-        """Přepíná stav pauzy ve workeru a mění text tlačítka."""
-        if hasattr(self, 'worker2') and self.worker2.isRunning():
-            is_paused = self.worker2.toggle_pause()
-            self.btn_corpus_pause.setText("POKRAČOVAT" if is_paused else "PAUZA")
-            # Vizuální odlišení pauzy
-            if is_paused:
-                self.btn_corpus_pause.setStyleSheet("background-color: #fef3c7; color: #92400e; font-weight: bold;")
-            else:
-                self.btn_corpus_pause.setStyleSheet("")
 
     def play_specific_corpus_word(self, row_idx):
         if not self.corpus_data or 'results' not in self.corpus_data: return
@@ -1450,6 +1596,7 @@ class AudioMatcherApp(QMainWindow):
         # Úprava okrajů, aby se legenda vpravo vešla
         canvas.figure.subplots_adjust(left=0.06, right=0.92, bottom=0.12, top=0.90, wspace=0.10) 
         canvas.draw()
+
     # ==========================================
     # 🔊 ZVUKOVÉ FUNKCE
     # ==========================================
@@ -1520,9 +1667,6 @@ class AudioMatcherApp(QMainWindow):
             self.play_mono(res.y_query, res.sr, "Hledaný vzorek (Levý graf)", "L")
         elif mode == 'right':
             self.play_mono(y_match, res.sr, "Detail nálezu (Pravý graf)", "P")
-
-    def play_corpus(self, m): 
-        pass
     
     def open_settings(self):
         dlg = SettingsDialog(self)
@@ -1568,6 +1712,7 @@ class AudioMatcherApp(QMainWindow):
         # Aplikujeme zelenou lištu předtím, než se dialog ukáže
         self.apply_native_titlebar_color(target_widget=msg)
         msg.exec()
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

@@ -1,17 +1,25 @@
-import os
 import sys
+import os
 import json
 from dataclasses import dataclass, asdict
 
-# Chytřejší určení BASE_DIR - funguje z Python skriptu i zkompilovaného .exe
+# Chytřejší určení cest pro PyInstaller
 if getattr(sys, 'frozen', False):
     # Aplikace běží jako zkompilovaný .exe
-    BASE_DIR = os.path.dirname(sys.executable)
+    # sys._MEIPASS je skrytá dočasná složka, kam PyInstaller rozbalí vložené soubory (assets)
+    BUNDLE_DIR = sys._MEIPASS 
+    # Složka, kde fyzicky leží samotný .exe (zde budeme hledat modely, databáze a ukládat nastavení)
+    APP_DIR = os.path.dirname(sys.executable) 
 else:
     # Aplikace běží jako Python skript
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    BUNDLE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    APP_DIR = BUNDLE_DIR
 
-SETTINGS_FILE = os.path.join(BASE_DIR, "app_settings.json")
+# Nastavení a těžká data chceme ukládat VEDLE .exe, aby zůstala zachována
+SETTINGS_FILE = os.path.join(APP_DIR, "app_settings.json")
+
+# Assets (ikony) chceme mít ZABALENÉ UVNITŘ .exe
+ASSETS_DIR = os.path.join(BUNDLE_DIR, "assets")
 
 @dataclass
 class AudioConfig:
@@ -26,10 +34,14 @@ class AudioConfig:
 
 @dataclass
 class AppConfig:
-    # Všechny cesty jsou nyní dynamické vůči BASE_DIR
-    offline_db_path: str = os.path.join(BASE_DIR, "data", "processed", "English_words_wav")
-    database_file: str = os.path.join(BASE_DIR, "data", "processed", "words_db.h5")
-    icon_path: str = os.path.join(BASE_DIR, "assets", "ikona.png")
+    # Těžká data - odkazujeme na APP_DIR (venku vedle exe)
+    offline_db_path: str = os.path.join(APP_DIR, "data", "processed", "English_words_wav")
+    database_file: str = os.path.join(APP_DIR, "data", "processed", "words_db.h5")
+    
+    # Assets - odkazujeme na ASSETS_DIR (což využívá BUNDLE_DIR, takže budou uvnitř exe)
+    icon_path: str = os.path.join(ASSETS_DIR, "ikona.ico")
+    search_icon_path: str = os.path.join(ASSETS_DIR, "search.png")
+    audio_icon_path: str = os.path.join(ASSETS_DIR, "audio.png")
     
     view_window_sec: float = 10.0
     min_speed_ratio: float = 0.5
@@ -52,15 +64,15 @@ class AIModelConfig:
     dtw_boundary_tolerance: float = 0.2
     dtw_penalty_value: float = 1000.0
     
-    # Lokální cesty k modelům také dynamicky
-    wav2vec_local_path: str = os.path.join(BASE_DIR, "models", "wav2vec2-local")
-    silero_vad_local_path: str = os.path.join(BASE_DIR, "models", "silero_vad.jit")
+    # Těžké modely - odkazujeme na APP_DIR (venku vedle exe)
+    wav2vec_local_path: str = os.path.join(APP_DIR, "models", "wav2vec2-local")
+    silero_vad_local_path: str = os.path.join(APP_DIR, "models", "silero_vad.jit")
     
     chunk_length_sec: float = 30.0
     chunk_overlap_sec: float = 2.0
     silero_vad_threshold: float = 0.5
     vad_method: str = "silero"  
-    device: str = "cuda"      
+    device: str = "cuda" 
 
 @dataclass
 class UIConfig:

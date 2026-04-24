@@ -31,8 +31,40 @@ class SingleAnalysisWorker(QThread):
         self.method = method
         self.excluded = excluded
 
+        # --- Proměnné pro pauzu a zastavení ---
+        self.mutex = QMutex()
+        self.pause_cond = QWaitCondition()
+        self._is_paused = False
+        self._is_stopped = False
+
+    def toggle_pause(self):
+        self.mutex.lock()
+        self._is_paused = not self._is_paused
+        status = self._is_paused
+        if not self._is_paused:
+            self.pause_cond.wakeAll()
+        self.mutex.unlock()
+        return status
+
+    def stop(self):
+        self.mutex.lock()
+        self._is_stopped = True
+        self._is_paused = False 
+        self.pause_cond.wakeAll() 
+        self.mutex.unlock()
+
+    def check_pause(self):
+        self.mutex.lock()
+        if self._is_paused:
+            self.pause_cond.wait(self.mutex)
+        is_stopped = self._is_stopped
+        self.mutex.unlock()
+        if is_stopped:
+            raise InterruptedError("Analýza byla přerušena uživatelem.")
+
     def run(self):
         try:
+            self.check_pause()
             self.progress.emit(10)
             y_long, sr = load_and_prep(self.long_path)
             y_query, _ = load_and_prep(self.query_path)
@@ -40,6 +72,7 @@ class SingleAnalysisWorker(QThread):
             if y_query is None or y_long is None:
                 raise ValueError("Nelze načíst audio soubory.")
 
+            self.check_pause()
             self.progress.emit(30)
             vis_spec_long = get_display_spectrogram(y_long, sr)
             vis_spec_query = get_display_spectrogram(y_query, sr)
@@ -50,6 +83,7 @@ class SingleAnalysisWorker(QThread):
                 vis_spec_query=vis_spec_query, vis_spec_long=vis_spec_long
             )
 
+            self.check_pause()
             self.progress.emit(50)
             
             if self.method == 'whisper':
@@ -59,19 +93,16 @@ class SingleAnalysisWorker(QThread):
                 y_long_16k = librosa.resample(y_long, orig_sr=sr, target_sr=MODEL_CFG.model_target_sr) if sr != MODEL_CFG.model_target_sr else y_long
                 y_query_16k = librosa.resample(y_query, orig_sr=sr, target_sr=MODEL_CFG.model_target_sr) if sr != MODEL_CFG.model_target_sr else y_query
                 
-                # --- HLAVNÍ OPRAVA: OCHRANA PROTI PÁDU WHISPERU NA VZORKU ---
+                self.check_pause()
                 try:
                     query_res = whisper_model.transcribe(y_query_16k, language=MODEL_CFG.whisper_language)
                     target_text = query_res.get("text", "").strip().lower().translate(str.maketrans('', '', string.punctuation))
-                except Exception:
-                    target_text = ""
-                    
-                if not target_text: 
-                    raise ValueError("Whisper nerozpoznal ve vzorku žádná slova (audio je buď zašuměné, tiché, nebo moc krátké).")
+                except Exception as e:
+                    raise ValueError(f"Kritická chyba uvnitř Whisperu: {str(e)}")
                 
                 self.progress.emit(75)
+                self.check_pause()
                     
-                # OCHRANA PROTI PÁDU WHISPERU NA DLOUHÉM AUDIU
                 try:
                     long_res = whisper_model.transcribe(y_long_16k, language=MODEL_CFG.whisper_language, word_timestamps=True)
                 except Exception:
@@ -80,6 +111,7 @@ class SingleAnalysisWorker(QThread):
                 occurrences = []
                 for seg in (long_res.get("segments") or []):
                     for w in (seg.get("words") or []):
+                        self.check_pause()
                         raw_word = w.get("word") or ""
                         if not raw_word: 
                             continue
@@ -101,6 +133,7 @@ class SingleAnalysisWorker(QThread):
             elif self.method == 'wav2vec':
                 feat_long = get_wav2vec_features(y_long, sr)
                 feat_query = get_wav2vec_features(y_query, sr)
+                self.check_pause()
                 self.progress.emit(70)
                 factor = 0.02 * sr / AUDIO_CFG.hop_length
                 w2v_excl = [(s / factor, e / factor) for s, e in self.excluded]
@@ -110,6 +143,7 @@ class SingleAnalysisWorker(QThread):
             elif self.method == 'dtw':
                 feat_long = get_mfcc_features(y_long, sr)
                 feat_query = get_mfcc_features(y_query, sr)
+                self.check_pause()
                 self.progress.emit(70)
                 score, _, start_f, end_f, _ = compute_dtw(feat_query, feat_long, self.excluded)
                 result.score, result.start_f, result.end_f = score, start_f, end_f
@@ -117,15 +151,17 @@ class SingleAnalysisWorker(QThread):
             elif self.method == 'pattern':
                 math_spec_long = get_math_spectrogram(y_long, sr)
                 math_spec_query = get_math_spectrogram(y_query, sr)
+                self.check_pause()
                 self.progress.emit(70)
                 score, _, start_f, end_f = compute_pattern_matching(math_spec_query, math_spec_long, self.excluded)
                 result.score, result.start_f, result.end_f = score, start_f, end_f
             
             self.progress.emit(100)
             self.finished.emit(result)
-            
+
+        except InterruptedError as e:
+            self.finished.emit(MatchResult(score=0, start_f=0, end_f=0, method=self.method, error=f"Zrušeno: {str(e)}"))
         except Exception as e:
-            # SPRÁVNĚ UMÍSTĚNÝ VÝPIS CHYBY DO APLIKACE
             import traceback
             full_traceback = traceback.format_exc()
             self.finished.emit(MatchResult(score=0, start_f=0, end_f=0, method=self.method, error=full_traceback))
@@ -145,22 +181,33 @@ class CorpusScannerWorker(QThread):
         self.mutex = QMutex()
         self.pause_cond = QWaitCondition()
         self._is_paused = False
+        self._is_stopped = False
 
     def toggle_pause(self):
         self.mutex.lock()
         self._is_paused = not self._is_paused
         status = self._is_paused
         if not self._is_paused:
-            self.pause_cond.wakeAll() # Probudit vlákno
+            self.pause_cond.wakeAll() 
         self.mutex.unlock()
         return status
 
+    def stop(self):
+        self.mutex.lock()
+        self._is_stopped = True
+        self._is_paused = False 
+        self.pause_cond.wakeAll() 
+        self.mutex.unlock()
+
     def check_pause(self):
-        """Bezpečně uspí vlákno, pokud je zapnutá pauza."""
         self.mutex.lock()
         if self._is_paused:
             self.pause_cond.wait(self.mutex)
+        is_stopped = self._is_stopped
         self.mutex.unlock()
+        
+        if is_stopped:
+            raise InterruptedError("Analýza byla přerušena uživatelem.")
 
     def run(self):
         db_file_handle = None
@@ -176,7 +223,7 @@ class CorpusScannerWorker(QThread):
             results = []
             
             if self.method.startswith('whisper'):
-                self.check_pause() # Kontrola před těžkým výpočtem
+                self.check_pause() 
                 
                 whisper_model = ModelManager().get_whisper()
                 self.progress.emit(20, "Přepisuji audio...")
@@ -200,7 +247,7 @@ class CorpusScannerWorker(QThread):
 
                 for seg in (long_res.get("segments") or []):
                     for w in (seg.get("words") or []):
-                        self.check_pause() # <--- KONTROLA PAUZY PŘI HLEDÁNÍ SLOV
+                        self.check_pause() 
                         
                         raw_word = w.get("word") or ""
                         if not raw_word: 
@@ -248,7 +295,7 @@ class CorpusScannerWorker(QThread):
                 
                 total = len(db_file_handle.keys())
                 for i, word in enumerate(db_file_handle.keys()):
-                    self.check_pause() # <--- KONTROLA PAUZY PŘI HLEDÁNÍ V DB
+                    self.check_pause() 
                     
                     self.progress.emit(15 + int((i/total)*80), f"Hledám: {word}")
                     feats_group = db_file_handle[word]
@@ -290,6 +337,8 @@ class CorpusScannerWorker(QThread):
                 "whisper_text": whisper_text_to_emit
             })
             
+        except InterruptedError as e:
+            self.finished.emit({"type": "error", "msg": str(e)})
         except Exception as e: 
             import traceback
             trace_str = traceback.format_exc()
@@ -313,21 +362,35 @@ class BatchEvaluationWorker(QThread):
         self.method = method
         self.threshold = threshold
     
+        self.mutex = QMutex()
+        self.pause_cond = QWaitCondition()
+        self._is_paused = False
+        self._is_stopped = False
+
     def toggle_pause(self):
         self.mutex.lock()
         self._is_paused = not self._is_paused
         status = self._is_paused
         if not self._is_paused:
-            self.pause_cond.wakeAll() # Probudit vlákno
+            self.pause_cond.wakeAll() 
         self.mutex.unlock()
         return status
 
+    def stop(self):
+        self.mutex.lock()
+        self._is_stopped = True
+        self._is_paused = False
+        self.pause_cond.wakeAll()
+        self.mutex.unlock()
+
     def check_pause(self):
-        """Pomocná metoda, kterou voláme uvnitř smyček."""
         self.mutex.lock()
         if self._is_paused:
             self.pause_cond.wait(self.mutex)
+        is_stopped = self._is_stopped
         self.mutex.unlock()
+        if is_stopped:
+            raise InterruptedError("Evaluace přerušena uživatelem.")
 
     def run(self):
         try:
@@ -354,7 +417,7 @@ class BatchEvaluationWorker(QThread):
             app_results_raw = []
             
             if self.method == 'whisper':
-                self.log_msg.emit("Analyzuji nahrávku)...")
+                self.log_msg.emit("Analyzuji nahrávku...")
                 whisper_model = ModelManager().get_whisper()
                 
                 chunk_duration, overlap = 120, 5
@@ -363,6 +426,7 @@ class BatchEvaluationWorker(QThread):
                 
                 current_chunk = 0
                 for chunk_y, sr_chunk, global_offset_sec in chunk_gen:
+                    self.check_pause()
                     current_chunk += 1
                     self.progress.emit(10 + int((current_chunk / total_chunks) * 70), f"Whisper Blok {current_chunk}/{total_chunks}...")
                     
@@ -374,7 +438,8 @@ class BatchEvaluationWorker(QThread):
                         res = {"segments": []}
                     
                     for seg in (res.get("segments") or []):
-                        for w in (res.get("words") or []):
+                        # Musíme brát 'words' ze 'seg', ne z 'res'
+                        for w in (seg.get("words") or []): 
                             raw_word = w.get("word") or ""
                             if not raw_word: 
                                 continue
@@ -394,6 +459,7 @@ class BatchEvaluationWorker(QThread):
                 
                 current_chunk = 0
                 for chunk_y, sr_chunk, global_offset_sec in chunk_gen:
+                    self.check_pause()
                     current_chunk += 1
                     self.progress.emit(10 + int((current_chunk / total_chunks) * 70), f"Blok {current_chunk}/{total_chunks}...")
 
@@ -403,8 +469,11 @@ class BatchEvaluationWorker(QThread):
 
                     excluded = []
                     while True:
+                        self.check_pause()
                         if self.method == 'pattern':
                             score, _, start_f, end_f = compute_pattern_matching(q_feat, chunk_feat, excluded)
+                            # OPRAVA 1: Pattern Matching (vyšší je lepší). Končí, když skóre klesne POD práh.
+                            if score < self.threshold or score <= 0.0: break
                         else:
                             v_excl = excluded
                             if self.method == 'wav2vec':
@@ -413,8 +482,10 @@ class BatchEvaluationWorker(QThread):
                             score, _, s_f, e_f, _ = compute_dtw(q_feat, chunk_feat, v_excl)
                             if self.method == 'wav2vec': start_f, end_f = s_f * fct, e_f * fct
                             else: start_f, end_f = s_f, e_f
+                            
+                            # OPRAVA 2: DTW (nižší je lepší). Končí, když skóre stoupne NAD práh.
+                            if score > self.threshold or score == float('inf'): break
 
-                        if score > self.threshold or score == float('inf'): break
                         app_results_raw.append({
                             'start_s': global_offset_sec + (start_f * AUDIO_CFG.hop_length / sr_chunk),
                             'score': score
@@ -424,13 +495,20 @@ class BatchEvaluationWorker(QThread):
             app_results_raw.sort(key=lambda x: x['start_s'])
             app_results = []
             for res in app_results_raw:
+                self.check_pause()
                 if not app_results or abs(res['start_s'] - app_results[-1]['start_s']) >= 1.0:
                     app_results.append(res)
-                elif res['score'] < app_results[-1]['score']:
-                    app_results[-1] = res
+                else:
+                    if self.method == 'pattern':
+                        if res['score'] > app_results[-1]['score']: 
+                            app_results[-1] = res
+                    else:
+                        if res['score'] < app_results[-1]['score']: 
+                            app_results[-1] = res
 
             positives_gt = []
             for w in gt_data:
+                self.check_pause()
                 word_text = w.get('word') or w.get('orthographic') or w.get('text')
                 source_file = w.get('source_file') or w.get('filename')
                 if word_text and word_text.lower().strip() == target_word:
@@ -443,6 +521,7 @@ class BatchEvaluationWorker(QThread):
             matched_gt, scored_predictions = set(), [] 
             
             for res in app_results:
+                self.check_pause()
                 is_tp = False
                 for i, gt in enumerate(positives_gt):
                     if i not in matched_gt and abs(res['start_s'] - gt['start_parsed']) <= 0.5:
@@ -450,9 +529,11 @@ class BatchEvaluationWorker(QThread):
                         break
                 scored_predictions.append((res['score'], is_tp))
             
-            scored_predictions.sort(key=lambda x: x[0])
+            # Pattern Matching potřebuje seřadit sestupně (nejlepší shody nahoře)
+            scored_predictions.sort(key=lambda x: x[0], reverse=(self.method == 'pattern'))
             det_curve_data = []
             for idx in range(len(scored_predictions)):
+                self.check_pause()
                 curr = scored_predictions[:idx + 1]
                 tp = sum(1 for _, ok in curr if ok)
                 fp = len(curr) - tp
@@ -460,7 +541,6 @@ class BatchEvaluationWorker(QThread):
                 det_curve_data.append({'threshold': curr[-1][0], 'miss': miss, 'fa_h': fp / audio_length_hours if audio_length_hours > 0 else 0.0, 'tp': tp, 'fp': fp})
 
             op = min(det_curve_data, key=lambda x: abs(x['fa_h'] - 1.0)) if det_curve_data else {'threshold': 0, 'miss': 1.0, 'fa_h': 0, 'tp': 0, 'fp': 0}
-            self.log_msg.emit(f"=== VÝSLEDEK ===\nZásahy: {op['tp']} | Falešné (FP): {op['fp']} | Miss (FN): {op['miss']*100:.1f}%")
 
             self.result_row.emit({
                 "word": target_word, "gt_count": total_targets, "found_count": len(app_results),
@@ -469,8 +549,12 @@ class BatchEvaluationWorker(QThread):
                 "found_times": [round(res['start_s'], 2) for res in app_results],
                 "gt_times": [round(gt['start_parsed'], 2) for gt in positives_gt]
             })
-            self.progress.emit(100, "Hotovo!"); self.finished.emit()
+            self.progress.emit(100, "Hotovo!")
+            self.finished.emit()
 
+        except InterruptedError as e:
+            self.log_msg.emit(f"⚠️ {str(e)}")
+            self.finished.emit()
         except Exception as e:
             import traceback
             trace_str = traceback.format_exc()
