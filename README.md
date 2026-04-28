@@ -1,8 +1,6 @@
 
 # <img src="assets/ikona.png" alt="Icon" width="45" align="absmiddle"> Audio Analysis Tool
 
-# Audio Analysis Tool
-
 AudioAnalysisTool is a powerful desktop application designed for advanced Keyword Spotting (KWS) in large, unannotated audio corpora. It bridges the gap between raw audio data and efficient semantic search by combining traditional acoustic algorithms (MFCC, DTW) with modern deep learning models (Wav2Vec 2.0, OpenAI Whisper).
 
 
