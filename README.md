@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img src="assets/ikona.png" alt="Audio Analysis Tool Logo" width="200">
+  <img src="assets/ikona.png" alt="Audio Analysis Tool Logo" width="50">
 </p>
 
 
