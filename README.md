@@ -1,5 +1,7 @@
 
-<img align="left" width="150" height="150" src="assets/ikona.png" alt="Audio Analysis Tool Logo">
+<p align="left">
+  <img src="assets/ikona.png" alt="Audio Analysis Tool Logo" width="50">
+</p>
 
 
 # Audio Analysis Tool
