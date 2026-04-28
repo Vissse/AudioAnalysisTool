@@ -1,15 +1,15 @@
+# ==============================================================================
+# audio_matcher/core/audio_utils.py
+# ==============================================================================
 import librosa
 import numpy as np
 import soundfile as sf
+import torch
 from config import AUDIO_CFG, MODEL_CFG
 from data_types import AudioArray, Spectrogram, FeatureMatrix
+from core.model_manager import ModelManager
 
 def stream_audio_chunks(filepath: str, chunk_duration_sec: int = 300, overlap_sec: int = 5, target_sr: int = 16000):
-    """
-    Generátor, který líně čte dlouhé audio z disku po blocích s překryvem.
-    Zabraňuje MemoryErroru při zpracování mnohahodinových nahrávek.
-    Vrací: (audio_chunk, lokalní_vzorkovaci_frekvence, globalni_cas_zacatku_v_sekundach)
-    """
     info = sf.info(filepath)
     orig_sr = info.samplerate
     
@@ -19,15 +19,12 @@ def stream_audio_chunks(filepath: str, chunk_duration_sec: int = 300, overlap_se
     
     current_frame = 0
     
-    # Block generator z knihovny soundfile (zajišťuje efektivní IO operace v C++)
     for block in sf.blocks(filepath, blocksize=chunk_frames, overlap=overlap_frames, always_2d=False, fill_value=0.0):
-        # Pokud je audio stereo, převedeme na mono zprůměrováním kanálů
         if block.ndim > 1:
             block = np.mean(block, axis=1)
             
         block = block.astype(np.float32)
         
-        # Resampling na požadovanou frekvenci (typicky 16kHz pro modely)
         if orig_sr != target_sr:
             block = librosa.resample(block, orig_sr=orig_sr, target_sr=target_sr)
             
@@ -37,44 +34,13 @@ def stream_audio_chunks(filepath: str, chunk_duration_sec: int = 300, overlap_se
         current_frame += step_frames
 
 def load_and_prep(file_path):
-   
     target_sr = 22050
     y, sr = librosa.load(file_path, sr=target_sr, mono=True)
-    
     y = librosa.util.normalize(y)
-    
     y = smart_trim_vad(y, sr) 
-    
     return y, sr
 
 def refine_boundaries_vad(y: AudioArray, sr: int, start_sec: float, end_sec: float, search_window_sec: float) -> tuple[float, float]:
-    """Router: Spustí VAD algoritmus vybraný v uživatelském nastavení."""
-    if MODEL_CFG.vad_method == "silero":
-        return _vad_silero(y, sr, start_sec, end_sec, search_window_sec)
-    else:
-        return _vad_rms(y, sr, start_sec, end_sec, search_window_sec)
-
-def _vad_rms(y: AudioArray, sr: int, start_sec: float, end_sec: float, search_window_sec: float) -> tuple[float, float]:
-    window_start_samp = max(0, int((start_sec - search_window_sec) * sr))
-    window_end_samp = min(len(y), int((end_sec + search_window_sec) * sr))
-    y_window = y[window_start_samp:window_end_samp]
-
-    if len(y_window) < AUDIO_CFG.n_fft: return start_sec, end_sec
-    rms = librosa.feature.rms(y=y_window, frame_length=AUDIO_CFG.n_fft, hop_length=AUDIO_CFG.hop_length)[0]
-    if len(rms) == 0: return start_sec, end_sec
-    
-    threshold = max(np.max(rms) * AUDIO_CFG.vad_energy_threshold, 1e-4)
-    active_frames = np.where(rms > threshold)[0]
-    if len(active_frames) == 0: return start_sec, end_sec
-
-    vad_start_sec = (window_start_samp / sr) + (active_frames[0] * AUDIO_CFG.hop_length / sr)
-    vad_end_sec = (window_start_samp / sr) + (active_frames[-1] * AUDIO_CFG.hop_length / sr)
-    return vad_start_sec, vad_end_sec
-
-def _vad_silero(y: AudioArray, sr: int, start_sec: float, end_sec: float, search_window_sec: float) -> tuple[float, float]:
-    from core.model_manager import ModelManager
-    import torch
-    
     window_start_samp = max(0, int((start_sec - search_window_sec) * sr))
     window_end_samp = min(len(y), int((end_sec + search_window_sec) * sr))
     y_window = y[window_start_samp:window_end_samp]
@@ -84,7 +50,6 @@ def _vad_silero(y: AudioArray, sr: int, start_sec: float, end_sec: float, search
     target_sr = 16000
     y_window_16k = librosa.resample(y_window, orig_sr=sr, target_sr=target_sr) if sr != target_sr else y_window
     
-    # Ujistíme se, že vstupní data putují na správný hardware
     device = ModelManager().get_device()
     tensor_16k = torch.from_numpy(y_window_16k).float().to(device)
 
@@ -108,11 +73,9 @@ def _vad_silero(y: AudioArray, sr: int, start_sec: float, end_sec: float, search
     return vad_start_sec, vad_end_sec
 
 def get_mfcc_features(y: AudioArray, sr: int) -> FeatureMatrix:
-    # 1. OCHRANA DITHEREM: Zajištění minimální délky audia (zabrání pádu u milisekundových souborů)
     min_length = 9 * AUDIO_CFG.hop_length
     if len(y) < min_length:
         pad_len = min_length - len(y)
-        # Generování Ditheru (amplituda 1e-4) místo absolutních nul
         dither = np.random.normal(0, 1e-4, pad_len).astype(np.float32)
         y = np.concatenate([y, dither])
 
@@ -137,15 +100,11 @@ def get_math_spectrogram(y: AudioArray, sr: int) -> Spectrogram:
     return (S_db - np.mean(S_db)) / (np.std(S_db) + 1e-6)
 
 def get_wav2vec_features(y: AudioArray, sr: int) -> FeatureMatrix:
-    from core.model_manager import ModelManager 
-    import torch 
-    
     processor, model = ModelManager().get_wav2vec()
     target_sr = MODEL_CFG.model_target_sr
     
     y_16k = librosa.resample(y, orig_sr=sr, target_sr=target_sr) if sr != target_sr else y
     
-    # 1. OCHRANA DITHEREM: Zajištění minimální délky pro neuronovou síť
     if len(y_16k) < 512:
         pad_len = 512 - len(y_16k)
         dither = np.random.normal(0, 1e-4, pad_len).astype(np.float32)
@@ -169,7 +128,6 @@ def get_wav2vec_features(y: AudioArray, sr: int) -> FeatureMatrix:
         with torch.no_grad():
             outputs = model(**inputs)
             
-        # OPRAVA ZDE: Přidána transpozice (.T)
         feats = outputs.last_hidden_state.squeeze(0).cpu().numpy().T
         
         frames_per_sec = feats.shape[1] / (len(chunk) / target_sr)
@@ -186,15 +144,7 @@ def get_wav2vec_features(y: AudioArray, sr: int) -> FeatureMatrix:
     features_combined = np.hstack(all_features)
     return (features_combined - np.mean(features_combined, axis=1, keepdims=True)) / (np.std(features_combined, axis=1, keepdims=True) + 1e-9)
 
-
 def smart_trim_vad(y: np.ndarray, sr: int) -> np.ndarray:
-    """
-    Použije Silero VAD pro inteligentní ořez (trimování) OBRYSŮ audia.
-    Nechává nedotčené přirozené pauzy uvnitř slova.
-    """
-    import torch
-    from core.model_manager import ModelManager 
-    
     silero_model, silero_utils = ModelManager().get_silero_vad()
     get_speech_timestamps = silero_utils[0]
 
@@ -221,18 +171,11 @@ def smart_trim_vad(y: np.ndarray, sr: int) -> np.ndarray:
         y_trimmed, _ = librosa.effects.trim(y, top_db=AUDIO_CFG.trim_top_db)
         return y_trimmed
 
-    # ====================================================================
-    # HLAVNÍ OPRAVA ZDE:
-    # Místo lepení kousků a mazání vnitřních mezer vezmeme pouze
-    # absolutní začátek prvního zvuku a absolutní konec posledního zvuku.
-    # Zbytek uvnitř zůstane naprosto přirozený.
-    # ====================================================================
     ratio = sr / 16000
     
     first_start_idx = int(speech_timestamps[0]['start'] * ratio)
     last_end_idx = int(speech_timestamps[-1]['end'] * ratio)
 
-    # Bezpečnostní pojistka, aby ořez nepřetekl
     first_start_idx = max(0, first_start_idx)
     last_end_idx = min(len(y), last_end_idx)
 

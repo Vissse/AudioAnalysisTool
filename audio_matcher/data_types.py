@@ -1,8 +1,10 @@
+# ==============================================================================
+# audio_matcher/data_types.py
+# ==============================================================================
 from dataclasses import dataclass
 from typing import TypeAlias
 import numpy as np
 
-# Striktní Type Aliases pro Python 3.10/3.11
 AudioArray: TypeAlias = np.ndarray
 Spectrogram: TypeAlias = np.ndarray
 FeatureMatrix: TypeAlias = np.ndarray
@@ -10,7 +12,6 @@ TimeRange: TypeAlias = tuple[float, float]
 
 @dataclass
 class MatchResult:
-    """Strukturovaný výsledek porovnání zvuku."""
     score: float
     start_f: float
     end_f: float

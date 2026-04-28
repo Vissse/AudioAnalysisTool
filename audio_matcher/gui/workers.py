@@ -1,3 +1,6 @@
+# ==============================================================================
+# audio_matcher/gui/workers.py
+# ==============================================================================
 import os
 import json
 import string
@@ -6,19 +9,16 @@ import difflib
 import h5py
 import numpy as np
 import soundfile as sf
-import traceback
 from PyQt6.QtCore import QThread, pyqtSignal, QMutex, QWaitCondition
 
 from config import AUDIO_CFG, APP_CFG, MODEL_CFG
 from data_types import MatchResult, TimeRange
 from core.audio_utils import (
     load_and_prep, get_display_spectrogram, get_mfcc_features, 
-    get_math_spectrogram, get_wav2vec_features, refine_boundaries_vad,
-    stream_audio_chunks
+    get_math_spectrogram, get_wav2vec_features, stream_audio_chunks
 )
 from core.matching import compute_dtw, compute_pattern_matching
 from core.model_manager import ModelManager
-
 
 class SingleAnalysisWorker(QThread):
     finished = pyqtSignal(MatchResult)
@@ -30,8 +30,6 @@ class SingleAnalysisWorker(QThread):
         self.query_path = query_path
         self.method = method
         self.excluded = excluded
-
-        # --- Proměnné pro pauzu a zastavení ---
         self.mutex = QMutex()
         self.pause_cond = QWaitCondition()
         self._is_paused = False
@@ -166,7 +164,6 @@ class SingleAnalysisWorker(QThread):
             full_traceback = traceback.format_exc()
             self.finished.emit(MatchResult(score=0, start_f=0, end_f=0, method=self.method, error=full_traceback))
 
-
 class CorpusScannerWorker(QThread):
     progress = pyqtSignal(int, str)
     finished = pyqtSignal(object) 
@@ -176,8 +173,6 @@ class CorpusScannerWorker(QThread):
         self.long_path = long_path
         self.db_file = db_file
         self.method = method
-        
-        # --- Proměnné pro pauzu ---
         self.mutex = QMutex()
         self.pause_cond = QWaitCondition()
         self._is_paused = False
@@ -205,7 +200,6 @@ class CorpusScannerWorker(QThread):
             self.pause_cond.wait(self.mutex)
         is_stopped = self._is_stopped
         self.mutex.unlock()
-        
         if is_stopped:
             raise InterruptedError("Analýza byla přerušena uživatelem.")
 
@@ -346,10 +340,9 @@ class CorpusScannerWorker(QThread):
         finally:
             if db_file_handle: db_file_handle.close()
 
-
 class BatchEvaluationWorker(QThread):
     progress = pyqtSignal(int, str)
-    log_msg = pyqtSignal(str)          
+    log_msg = pyqtSignal(str)         
     result_row = pyqtSignal(dict)
     finished = pyqtSignal()
     error = pyqtSignal(str)
@@ -438,7 +431,6 @@ class BatchEvaluationWorker(QThread):
                         res = {"segments": []}
                     
                     for seg in (res.get("segments") or []):
-                        # Musíme brát 'words' ze 'seg', ne z 'res'
                         for w in (seg.get("words") or []): 
                             raw_word = w.get("word") or ""
                             if not raw_word: 
@@ -472,7 +464,6 @@ class BatchEvaluationWorker(QThread):
                         self.check_pause()
                         if self.method == 'pattern':
                             score, _, start_f, end_f = compute_pattern_matching(q_feat, chunk_feat, excluded)
-                            # OPRAVA 1: Pattern Matching (vyšší je lepší). Končí, když skóre klesne POD práh.
                             if score < self.threshold or score <= 0.0: break
                         else:
                             v_excl = excluded
@@ -483,7 +474,6 @@ class BatchEvaluationWorker(QThread):
                             if self.method == 'wav2vec': start_f, end_f = s_f * fct, e_f * fct
                             else: start_f, end_f = s_f, e_f
                             
-                            # OPRAVA 2: DTW (nižší je lepší). Končí, když skóre stoupne NAD práh.
                             if score > self.threshold or score == float('inf'): break
 
                         app_results_raw.append({
@@ -529,7 +519,6 @@ class BatchEvaluationWorker(QThread):
                         break
                 scored_predictions.append((res['score'], is_tp))
             
-            # Pattern Matching potřebuje seřadit sestupně (nejlepší shody nahoře)
             scored_predictions.sort(key=lambda x: x[0], reverse=(self.method == 'pattern'))
             det_curve_data = []
             for idx in range(len(scored_predictions)):

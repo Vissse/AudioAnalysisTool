@@ -1,3 +1,6 @@
+# ==============================================================================
+# audio_matcher/core/model_manager.py
+# ==============================================================================
 import threading
 import torch
 import warnings
@@ -27,42 +30,33 @@ class ModelManager:
             with self._lock:
                 if self.whisper_model is None:
                     warnings.filterwarnings("ignore", message="Failed to launch Triton kernels")
-                    print(f"Načítám OpenAI Whisper Model na {self.get_device()}...")
                     try:
                         import whisper
+                        device_str = "cuda" if torch.cuda.is_available() and MODEL_CFG.device == "cuda" else "cpu"
+                        self.whisper_model = whisper.load_model("small", device=device_str)
+                        if device_str == "cuda":
+                            self.whisper_model = self.whisper_model.to("cuda")
                     except ImportError:
-                        print("❌ Chyba: Knihovna 'whisper' nebyla nalezena. Zkuste: pip install openai-whisper")
                         return None
-                    
-                    device_str = "cuda" if torch.cuda.is_available() and MODEL_CFG.device == "cuda" else "cpu"
-                    self.whisper_model = whisper.load_model("small", device=device_str)
-                    
-                    if device_str == "cuda":
-                        self.whisper_model = self.whisper_model.to("cuda")
-                    print("✅ Whisper úspěšně načten!")
         return self.whisper_model
 
     def get_wav2vec(self):
         if self.w2v_processor is None:
             with self._lock:
                 if self.w2v_processor is None:
-                    print(f"Načítám Wav2Vec Model na {self.get_device()}...")
+                    warnings.filterwarnings("ignore", category=UserWarning, module="transformers")
                     from transformers import Wav2Vec2Processor, Wav2Vec2Model
                     self.w2v_processor = Wav2Vec2Processor.from_pretrained(MODEL_CFG.wav2vec_local_path)
                     self.w2v_processor.tokenizer_class = "Wav2Vec2CTCTokenizer"
                     self.w2v_model = Wav2Vec2Model.from_pretrained(MODEL_CFG.wav2vec_local_path).to(self.get_device())
-                    print("✅ Wav2Vec načten!")
         return self.w2v_processor, self.w2v_model
 
     def get_silero_vad(self):
         if self.silero_model is None:
             with self._lock:
                 if self.silero_model is None:
-                    print(f"Načítám Silero VAD na {self.get_device()}...")
                     from core.utils_vad import get_speech_timestamps
                     self.silero_model = torch.jit.load(MODEL_CFG.silero_vad_local_path).to(self.get_device())
                     self.silero_model.eval()
                     self.silero_utils = [get_speech_timestamps]
-                    print("✅ Silero VAD načten!")
         return self.silero_model, self.silero_utils
-    
