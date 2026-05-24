@@ -90,7 +90,7 @@ This mode is designed to scan a target audio track for **all known entries** pre
 A comprehensive toolset for researchers and analysts to measure algorithmic efficacy against annotated ground truth data (JSON format).
 
 ### Execution Workflow:
-1. Select the **Zlatý standard** reference file (the application defaults to `virtual_stream_ground_truth_complete_time.json`).
+1. Select the **Zlatý standard** reference file. The application defaults to `virtual_stream_ground_truth_complete_time.json`. *(Note: The compiled continuous audio track must be manually found at `AudioAnalysisTool\data\processed\virtual_stream_complete_time.wav`. If you are not using this compiled track and are instead evaluating individual standalone samples, you must switch the reference file to `virtual_stream_ground_truth.json`).*
 2. Specify the target audio track and query sample.
 3. Define the **Maximální práh** (the sensitivity limit for match validation).
 4. Click **SPUSTIT KVANTITATIVNÍ EVALUACI**.
