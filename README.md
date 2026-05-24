@@ -41,7 +41,7 @@ For Windows users:
 
 ## Usage
 
-This application provides advanced audio analysis and keyword/acoustic sample spotting within continuous audio streams. The workflow is divided into three primary operational modes, accessible via the main window tabs.
+The workflow is divided into three primary operational modes, accessible via the main window tabs.
 
 ### Quick Start: File Input Methods
 Audio files can be loaded using two methods:
