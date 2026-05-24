@@ -58,7 +58,7 @@ This mode enables detailed comparative analysis between a **single query sample 
 2. Specify the target keyword in the **Hledaný Vzorek** field.
 3. Select the **Analytický model**:
    * `OpenAI Whisper (ASR)` – Transcribes audio to text and performs exact string matching.
-   * `Wav2Vec 2.0 + DTW` – Utilizes a neural network for feature extraction paired with Dynamic Time Warping (highly robust against acoustic variations and mutations).
+   * `Wav2Vec 2.0 + DTW` – Utilizes a neural network for feature extraction paired with Dynamic Time Warping.
    * `MFCC + DTW` – Traditional acoustic feature matching using Mel-Frequency Cepstral Coefficients and DTW.
    * `Pattern Matching` – Performs 2D template matching on spectrogram visual representations.
 4. Click **SPUSTIT ANALÝZU**.
