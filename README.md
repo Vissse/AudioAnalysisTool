@@ -46,7 +46,7 @@ This application provides advanced audio analysis and keyword/acoustic sample sp
 ### Quick Start: File Input Methods
 Audio files can be loaded using two methods:
 1. **Local File Selection:** Click the `Procházet vlastní...` button to select any supported audio file (`.wav`, `.mp3`, `.flac`, etc.) from your local drive.
-2. **Database Quick ID:** Enter a sample ID (e.g., `105`) or a keyword (e.g., `hello`) directly into the text field and press **Enter**. If the entry exists within the database, the application will automatically retrieve and load the corresponding file.
+2. **Database Quick ID:** Enter a sample ID (e.g., `105`) or an english keyword (e.g., `hello`) directly into the text field and press **Enter**. If the entry exists within the database, the application will automatically retrieve and load the corresponding file.
 
 ---
 
