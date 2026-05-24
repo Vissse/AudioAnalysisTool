@@ -39,7 +39,7 @@ For Windows users:
 
     Extract the resulting .zip archive into the project directory.
 
-## Usage & Examples
+## Usage
 
 This application provides advanced audio analysis and keyword/acoustic sample spotting within continuous audio streams. The workflow is divided into three primary operational modes, accessible via the main window tabs.
 
